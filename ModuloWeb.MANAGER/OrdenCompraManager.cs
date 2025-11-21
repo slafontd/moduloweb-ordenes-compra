@@ -13,17 +13,38 @@ namespace ModuloWeb.MANAGER
 {
     public class OrdenCompraManager
     {
-        OrdenCompraBroker broker = new OrdenCompraBroker();
+        private readonly OrdenCompraBroker broker = new OrdenCompraBroker();
+
+        // Helper para crear la conexión a MySQL
+        // - En producción (Railway): usa la variable de entorno ConnectionStrings__DefaultConnection
+        // - En desarrollo local: si no está definida, usa ConexionBD.Conectar()
+        private MySqlConnection CrearConexion()
+        {
+            var cs = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+
+            if (!string.IsNullOrWhiteSpace(cs))
+            {
+                return new MySqlConnection(cs);
+            }
+
+            // Fallback para cuando trabajas local con tu MySQL de siempre
+            return ConexionBD.Conectar();
+        }
 
         // Crea una nueva orden de compra
         public int CrearOrden(int idProveedor, decimal total, List<(int idProducto, int cantidad, decimal precio)> detalles)
         {
+            // Inserta encabezado de la orden
             int idOrden = broker.InsertarOrden(idProveedor, total);
+
+            // Inserta detalle por cada producto
             foreach (var d in detalles)
                 broker.InsertarDetalle(idOrden, d.idProducto, d.cantidad, d.precio);
 
+            // Genera el PDF y envía correo
             string rutaPDF = GenerarPDF(idOrden, idProveedor, total, detalles);
             EnviarCorreo(idOrden, idProveedor, rutaPDF);
+
             return idOrden;
         }
 
@@ -32,10 +53,15 @@ namespace ModuloWeb.MANAGER
         {
             List<OrdenCompra> lista = new List<OrdenCompra>();
 
-            using (var con = ConexionBD.Conectar())
+            using (var con = CrearConexion())
             {
                 con.Open();
-                var cmd = new MySqlCommand("SELECT id_orden, id_proveedor, total, fecha, estado FROM ordenes_compra", con);
+
+                var cmd = new MySqlCommand(
+                    "SELECT id_orden, id_proveedor, total, fecha, estado FROM ordenes_compra",
+                    con
+                );
+
                 var reader = cmd.ExecuteReader();
 
                 while (reader.Read())
@@ -50,6 +76,7 @@ namespace ModuloWeb.MANAGER
                     });
                 }
             }
+
             return lista;
         }
 
@@ -67,11 +94,14 @@ namespace ModuloWeb.MANAGER
                     PdfWriter.GetInstance(doc, fs);
                     doc.Open();
 
-                    var titulo = new Paragraph($"ORDEN DE COMPRA #{idOrden}",
-                        FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 16))
+                    var titulo = new Paragraph(
+                        $"ORDEN DE COMPRA #{idOrden}",
+                        FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 16)
+                    )
                     {
                         Alignment = Element.ALIGN_CENTER
                     };
+
                     doc.Add(titulo);
                     doc.Add(new Paragraph("\n"));
                     doc.Add(new Paragraph($"Proveedor: {idProveedor}"));
@@ -94,6 +124,7 @@ namespace ModuloWeb.MANAGER
                     doc.Add(tabla);
                     doc.Add(new Paragraph("\n"));
                     doc.Add(new Paragraph($"Total: {total:C}"));
+
                     doc.Close();
                 }
             }
@@ -105,8 +136,8 @@ namespace ModuloWeb.MANAGER
         private void EnviarCorreo(int idOrden, int idProveedor, string rutaPDF)
         {
             string proveedorCorreo = ObtenerCorreoProveedor(idProveedor);
-            string remitente = "lafontdiazsantiago@gmail.com"; // <-- tu correo Gmail
-            string claveApp = "jeae szgh fkff fzyz"; // <-- contraseña de aplicación de Gmail
+            string remitente = "lafontdiazsantiago@gmail.com"; // tu correo Gmail
+            string claveApp = "jeae szgh fkff fzyz";            // contraseña de aplicación de Gmail
 
             using (MailMessage mail = new MailMessage())
             {
@@ -125,11 +156,11 @@ namespace ModuloWeb.MANAGER
                     try
                     {
                         smtp.Send(mail);
-                        Console.WriteLine(" Correo enviado correctamente a " + proveedorCorreo);
+                        Console.WriteLine("Correo enviado correctamente a " + proveedorCorreo);
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine(" Error al enviar correo: " + ex.Message);
+                        Console.WriteLine("Error al enviar correo: " + ex.Message);
                     }
                 }
             }
@@ -138,13 +169,20 @@ namespace ModuloWeb.MANAGER
         // Obtiene el correo del proveedor
         private string ObtenerCorreoProveedor(int idProveedor)
         {
-            using (var con = ConexionBD.Conectar())
+            using (var con = CrearConexion())
             {
                 con.Open();
-                var cmd = new MySqlCommand("SELECT correo FROM proveedores WHERE id=@id", con);
+
+                var cmd = new MySqlCommand(
+                    "SELECT correo FROM proveedores WHERE id=@id",
+                    con
+                );
+
                 cmd.Parameters.AddWithValue("@id", idProveedor);
+
                 return cmd.ExecuteScalar()?.ToString() ?? "sin_correo@empresa.com";
             }
         }
     }
 }
+
