@@ -15,40 +15,40 @@ namespace ModuloWeb.MANAGER
     {
         private readonly OrdenCompraBroker broker = new OrdenCompraBroker();
 
-        // Helper para crear la conexión a MySQL
-        // - En producción (Railway): usa la variable de entorno ConnectionStrings__DefaultConnection
-        // - En desarrollo local: si no está definida, usa ConexionBD.Conectar()
+        // Helper: crea la conexión a MySQL
         private MySqlConnection CrearConexion()
         {
             var cs = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
 
             if (!string.IsNullOrWhiteSpace(cs))
-            {
                 return new MySqlConnection(cs);
-            }
 
-            // Fallback para cuando trabajas local con tu MySQL de siempre
-            return ConexionBD.Conectar();
+            return ConexionBD.Conectar(); // solo local
         }
 
-        // Crea una nueva orden de compra
+        // Crear nueva orden de compra
         public int CrearOrden(int idProveedor, decimal total, List<(int idProducto, int cantidad, decimal precio)> detalles)
         {
-            // Inserta encabezado de la orden
             int idOrden = broker.InsertarOrden(idProveedor, total);
 
-            // Inserta detalle por cada producto
             foreach (var d in detalles)
                 broker.InsertarDetalle(idOrden, d.idProducto, d.cantidad, d.precio);
 
-            // Genera el PDF y envía correo
+            // Generar PDF (funciona en Railway)
             string rutaPDF = GenerarPDF(idOrden, idProveedor, total, detalles);
-            EnviarCorreo(idOrden, idProveedor, rutaPDF);
+
+            // SOLO enviar correo cuando estamos en desarrollo (local)
+            var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
+
+            if (env == "Development")
+            {
+                EnviarCorreo(idOrden, idProveedor, rutaPDF);
+            }
 
             return idOrden;
         }
 
-        // Obtiene todas las órdenes de compra
+        // Obtener órdenes
         public List<OrdenCompra> ObtenerOrdenes()
         {
             List<OrdenCompra> lista = new List<OrdenCompra>();
@@ -80,10 +80,10 @@ namespace ModuloWeb.MANAGER
             return lista;
         }
 
-        // Genera el PDF con los datos de la orden
+        // Generar PDF en carpeta válida de Railway (/tmp)
         private string GenerarPDF(int idOrden, int idProveedor, decimal total, List<(int, int, decimal)> detalles)
         {
-            string carpeta = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Ordenes");
+            string carpeta = "/tmp/Ordenes";
             Directory.CreateDirectory(carpeta);
             string ruta = Path.Combine(carpeta, $"orden_{idOrden}.pdf");
 
@@ -124,7 +124,6 @@ namespace ModuloWeb.MANAGER
                     doc.Add(tabla);
                     doc.Add(new Paragraph("\n"));
                     doc.Add(new Paragraph($"Total: {total:C}"));
-
                     doc.Close();
                 }
             }
@@ -132,12 +131,12 @@ namespace ModuloWeb.MANAGER
             return ruta;
         }
 
-        // Enviar correo con Gmail (requiere contraseña de aplicación)
+        // Enviar correo (SOLO funciona en local)
         private void EnviarCorreo(int idOrden, int idProveedor, string rutaPDF)
         {
             string proveedorCorreo = ObtenerCorreoProveedor(idProveedor);
-            string remitente = "lafontdiazsantiago@gmail.com"; // tu correo Gmail
-            string claveApp = "jeae szgh fkff fzyz";            // contraseña de aplicación de Gmail
+            string remitente = "lafontdiazsantiago@gmail.com";
+            string claveApp = "jeae szgh fkff fzyz";
 
             using (MailMessage mail = new MailMessage())
             {
@@ -166,7 +165,7 @@ namespace ModuloWeb.MANAGER
             }
         }
 
-        // Obtiene el correo del proveedor
+        // Obtener correo del proveedor
         private string ObtenerCorreoProveedor(int idProveedor)
         {
             using (var con = CrearConexion())
@@ -185,4 +184,3 @@ namespace ModuloWeb.MANAGER
         }
     }
 }
-
