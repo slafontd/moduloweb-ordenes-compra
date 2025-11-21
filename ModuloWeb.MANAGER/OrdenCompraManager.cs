@@ -23,7 +23,8 @@ namespace ModuloWeb.MANAGER
             if (!string.IsNullOrWhiteSpace(cs))
                 return new MySqlConnection(cs);
 
-            return ConexionBD.Conectar(); // solo local
+            // Para desarrollo local
+            return ConexionBD.Conectar();
         }
 
         // Crear nueva orden de compra
@@ -34,10 +35,8 @@ namespace ModuloWeb.MANAGER
             foreach (var d in detalles)
                 broker.InsertarDetalle(idOrden, d.idProducto, d.cantidad, d.precio);
 
-            // Generar PDF
             string rutaPDF = GenerarPDF(idOrden, idProveedor, total, detalles);
 
-            // Enviar correo (ahora con SendGrid)
             EnviarCorreo(idOrden, idProveedor, rutaPDF);
 
             return idOrden;
@@ -75,11 +74,12 @@ namespace ModuloWeb.MANAGER
             return lista;
         }
 
-        // Generar PDF en carpeta válida de Railway (/tmp)
+        // Generar PDF dentro de /tmp (para funcionar en Railway)
         private string GenerarPDF(int idOrden, int idProveedor, decimal total, List<(int, int, decimal)> detalles)
         {
             string carpeta = "/tmp/Ordenes";
             Directory.CreateDirectory(carpeta);
+
             string ruta = Path.Combine(carpeta, $"orden_{idOrden}.pdf");
 
             using (FileStream fs = new FileStream(ruta, FileMode.Create, FileAccess.Write, FileShare.None))
@@ -119,6 +119,7 @@ namespace ModuloWeb.MANAGER
                     doc.Add(tabla);
                     doc.Add(new Paragraph("\n"));
                     doc.Add(new Paragraph($"Total: {total:C}"));
+
                     doc.Close();
                 }
             }
@@ -126,29 +127,38 @@ namespace ModuloWeb.MANAGER
             return ruta;
         }
 
-        // ✅ Enviar correo usando SendGrid (funciona en Railway)
+        // ========== ENVÍO DE CORREO CON SENDGRID ========== //
         private async void EnviarCorreo(int idOrden, int idProveedor, string rutaPDF)
         {
             try
             {
+                // API key de SendGrid desde Railway
                 string apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
                 if (string.IsNullOrWhiteSpace(apiKey))
                 {
-                    Console.WriteLine("SENDGRID_API_KEY no está configurada. No se envía correo.");
+                    Console.WriteLine("ERROR: SENDGRID_API_KEY no está configurada.");
                     return;
                 }
 
+                // Correo del proveedor desde la BD
                 string proveedorCorreo = ObtenerCorreoProveedor(idProveedor);
                 if (string.IsNullOrWhiteSpace(proveedorCorreo))
                 {
-                    Console.WriteLine("Proveedor sin correo válido. No se envía correo.");
+                    Console.WriteLine("ERROR: El proveedor no tiene correo.");
+                    return;
+                }
+
+                // Correo remitente verificado en SendGrid
+                string fromEmail = Environment.GetEnvironmentVariable("FROM_EMAIL");
+                if (string.IsNullOrWhiteSpace(fromEmail))
+                {
+                    Console.WriteLine("ERROR: FROM_EMAIL no está configurado.");
                     return;
                 }
 
                 var client = new SendGridClient(apiKey);
 
-                // Usa el correo que configuraste en SendGrid como remitente
-                var from = new EmailAddress("slafontd@eafit.edu.co", "Sistema de Órdenes");
+                var from = new EmailAddress(fromEmail, "Sistema de Órdenes");
                 var to = new EmailAddress(proveedorCorreo);
 
                 string subject = $"Orden de Compra #{idOrden}";
@@ -166,7 +176,12 @@ namespace ModuloWeb.MANAGER
                 }
 
                 var response = await client.SendEmailAsync(msg);
-                Console.WriteLine($"Correo enviado a {proveedorCorreo}. StatusCode: {response.StatusCode}");
+
+                string responseBody = await response.Body.ReadAsStringAsync();
+
+                Console.WriteLine($"STATUS SENDGRID: {response.StatusCode}");
+                Console.WriteLine("RESPUESTA SENDGRID:");
+                Console.WriteLine(responseBody);
             }
             catch (Exception ex)
             {
@@ -188,7 +203,7 @@ namespace ModuloWeb.MANAGER
 
                 cmd.Parameters.AddWithValue("@id", idProveedor);
 
-                return cmd.ExecuteScalar()?.ToString() ?? "sin_correo@empresa.com";
+                return cmd.ExecuteScalar()?.ToString() ?? "";
             }
         }
     }
