@@ -7,14 +7,39 @@ namespace ModuloWeb.BROKER
 {
     public class OrdenCompraBroker
     {
+        // --------------------------------------------------------------------
+        //  Helper: crea la conexión a MySQL
+        //  - En producción (Railway): usa la variable de entorno
+        //      ConnectionStrings__DefaultConnection
+        //  - En desarrollo local: si no existe esa variable,
+        //      usa ConexionBD.Conectar() como antes
+        // --------------------------------------------------------------------
+        private MySqlConnection CrearConexion()
+        {
+            // Intenta leer la cadena de conexión desde las variables de entorno
+            var cs = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+
+            if (!string.IsNullOrWhiteSpace(cs))
+            {
+                return new MySqlConnection(cs);
+            }
+
+            // Fallback para desarrollo local (localhost, etc.)
+            return ConexionBD.Conectar();
+        }
+
+        // --------------------------------------------------------------------
         // Inserta la orden
+        // --------------------------------------------------------------------
         public int InsertarOrden(int idProveedor, decimal total)
         {
-            using (var con = ConexionBD.Conectar())
+            using (var con = CrearConexion())
             {
                 con.Open();
+
                 var cmd = new MySqlCommand(
-                    "INSERT INTO ordenes_compra (id_proveedor, total) VALUES (@prov, @total); SELECT LAST_INSERT_ID();",
+                    "INSERT INTO ordenes_compra (id_proveedor, total) " +
+                    "VALUES (@prov, @total); SELECT LAST_INSERT_ID();",
                     con
                 );
 
@@ -25,10 +50,12 @@ namespace ModuloWeb.BROKER
             }
         }
 
+        // --------------------------------------------------------------------
         // Inserta los detalles de la orden
+        // --------------------------------------------------------------------
         public void InsertarDetalle(int idOrden, int idProducto, int cantidad, decimal precio)
         {
-            using (var con = ConexionBD.Conectar())
+            using (var con = CrearConexion())
             {
                 con.Open();
 
@@ -50,12 +77,14 @@ namespace ModuloWeb.BROKER
             }
         }
 
+        // --------------------------------------------------------------------
         // Obtiene todos los proveedores
+        // --------------------------------------------------------------------
         public List<Proveedor> ObtenerProveedores()
         {
             var lista = new List<Proveedor>();
 
-            using (var con = ConexionBD.Conectar())
+            using (var con = CrearConexion())
             {
                 con.Open();
 
@@ -82,12 +111,14 @@ namespace ModuloWeb.BROKER
             return lista;
         }
 
+        // --------------------------------------------------------------------
         // Obtiene todos los productos con su proveedor
+        // --------------------------------------------------------------------
         public List<Producto> ObtenerProductos()
         {
             var lista = new List<Producto>();
 
-            using (var con = ConexionBD.Conectar())
+            using (var con = CrearConexion())
             {
                 con.Open();
 
@@ -113,10 +144,12 @@ namespace ModuloWeb.BROKER
             return lista;
         }
 
+        // --------------------------------------------------------------------
         // Obtiene el precio real del producto desde BD
+        // --------------------------------------------------------------------
         public decimal ObtenerPrecioProducto(int idProducto)
         {
-            using (var con = ConexionBD.Conectar())
+            using (var con = CrearConexion())
             {
                 con.Open();
 
