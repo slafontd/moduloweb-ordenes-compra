@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ModuloWeb.BROKER\ModuloWeb.BROKER.csproj" />
+    <ProjectReference Include="..\ModuloWeb.ENTITIES\ModuloWeb.ENTITIES.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="iTextSharp.LGPLv2.Core" Version="3.7.7" />
+  </ItemGroup>
+
+</Project>

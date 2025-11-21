@@ -1,0 +1,176 @@
+@model ModuloWeb1.Models.OrdenCompraViewModel
+@{
+    ViewData["Title"] = "Nueva Orden de Compra";
+}
+
+<div class="container mt-4">
+    <div class="card shadow-lg p-4">
+        <h2 class="text-center text-primary mb-4">
+            Orden de Compra
+        </h2>
+
+        <form asp-action="Crear" method="post">
+
+            <!-- PROVEEDOR + CONDICIONES -->
+            <div class="row mb-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Proveedor:</label>
+                    <select id="proveedorSelect" name="idProveedor" class="form-select" onchange="filtrarProductosPorProveedor()" required>
+                        <option value="">Seleccione un proveedor</option>
+                        @foreach (var p in ViewBag.Proveedores)
+                        {
+                            <option value="@p.Id">@p.Nombre - @p.Direccion</option>
+                        }
+                    </select>
+                </div>
+
+                <div class="col-md-6">
+                    <label class="form-label fw-bold">Condiciones de pago:</label>
+                    <input type="text" name="condiciones" class="form-control" value="30 días" />
+                </div>
+            </div>
+
+            <hr />
+            <h4 class="text-secondary">🛒 Productos</h4>
+
+            <!-- LISTA DE PRODUCTOS -->
+            <div id="productos" class="mb-3">
+
+                <!-- FILA MODELO -->
+                <div class="row g-3 align-items-center mb-2 detalle border-bottom pb-2">
+                    <div class="col-md-4">
+                        <label class="form-label">Producto</label>
+                        <select name="idProducto" class="form-select producto-select" onchange="actualizarPrecio(this)" required>
+                            <option value="">Seleccione un producto</option>
+                            @foreach (var pr in ViewBag.Productos)
+                            {
+                                <option value="@pr.Id"
+                                        data-precio="@pr.Precio"
+                                        data-proveedor="@pr.IdProveedor">
+                                    @pr.Nombre
+                                </option>
+                            }
+                        </select>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Cantidad</label>
+                        <input type="number" name="cantidad" class="form-control cantidad-input" min="1" value="1" required />
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Precio Unitario</label>
+                        <input type="text" name="precio" class="form-control precio-input" readonly />
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" class="btn btn-outline-primary mb-3" onclick="agregarFila()">
+                ➕ Agregar producto
+            </button>
+
+            <!-- TOTAL -->
+            <div class="text-end fw-bold fs-5 mb-3">
+                Total: $<span id="total">0.00</span>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" class="btn btn-success px-4">💾 Generar Orden</button>
+            </div>
+        </form>
+
+        @if (ViewBag.Mensaje != null)
+        {
+            <div class="alert alert-success text-center mt-4">
+                @ViewBag.Mensaje
+            </div>
+        }
+    </div>
+</div>
+
+<!-- SELECT OCULTO PARA FILTRO DE PRODUCTOS -->
+<select id="productosMaster" class="d-none">
+    <option value="">Seleccione un producto</option>
+    @foreach (var pr in ViewBag.Productos)
+    {
+        <option value="@pr.Id" 
+                data-precio="@pr.Precio"
+                data-proveedor="@pr.IdProveedor">
+            @pr.Nombre
+        </option>
+    }
+</select>
+
+<script>
+
+    // ➕ DUPLICAR FILA
+    function agregarFila() {
+        const original = document.querySelector(".detalle");
+        const div = document.createElement("div");
+        div.className = "row g-3 align-items-center mb-2 detalle border-bottom pb-2";
+        div.innerHTML = original.innerHTML;
+        document.getElementById("productos").appendChild(div);
+
+        filtrarProductosPorProveedor();  // <-- IMPORTANTE para que respete el proveedor
+    }
+
+
+    // 🎯 Filtra productos según proveedor seleccionado
+    function filtrarProductosPorProveedor() {
+        const idProveedor = document.getElementById("proveedorSelect").value;
+        const masterOptions = document.querySelectorAll("#productosMaster option");
+
+        document.querySelectorAll(".producto-select").forEach(select => {
+
+            const valorPrevio = select.value;
+            select.innerHTML = "";
+
+            // Placeholder
+            const ph = document.createElement("option");
+            ph.value = "";
+            ph.textContent = "Seleccione un producto";
+            select.appendChild(ph);
+
+            masterOptions.forEach(opt => {
+                const provId = opt.getAttribute("data-proveedor");
+
+                // Si no hay proveedor → mostrar todos los productos
+                if (!idProveedor || provId === idProveedor) {
+                    select.appendChild(opt.cloneNode(true));
+                }
+            });
+
+            // Intentar mantener selección previa
+            Array.from(select.options).forEach(o => {
+                if (o.value === valorPrevio) o.selected = true;
+            });
+        });
+    }
+
+
+    // Precio automático
+    function actualizarPrecio(select) {
+        const precio = select.selectedOptions[0]?.getAttribute("data-precio") || 0;
+        const fila = select.closest(".detalle");
+        fila.querySelector(".precio-input").value = precio;
+        recalcularTotal();
+    }
+
+    // Recalcular total cada vez que cambia cantidad
+    document.addEventListener("input", function (e) {
+        if (e.target.classList.contains("cantidad-input")) {
+            recalcularTotal();
+        }
+    });
+
+    // Total final
+    function recalcularTotal() {
+        let total = 0;
+        document.querySelectorAll(".detalle").forEach(fila => {
+            const precio = parseFloat(fila.querySelector(".precio-input").value || 0);
+            const cantidad = parseInt(fila.querySelector(".cantidad-input").value || 0);
+            total += precio * cantidad;
+        });
+        document.getElementById("total").innerText = total.toFixed(2);
+    }
+</script>
