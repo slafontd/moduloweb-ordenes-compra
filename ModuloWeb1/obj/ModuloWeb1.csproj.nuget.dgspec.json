@@ -225,6 +225,10 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
+            "SendGrid": {
+              "target": "Package",
+              "version": "[9.29.3, )"
+            },
             "iTextSharp.LGPLv2.Core": {
               "target": "Package",
               "version": "[3.7.7, )"

@@ -1,13 +1,13 @@
 ﻿using ModuloWeb.BROKER;
 using System;
 using System.IO;
-using System.Net;
-using System.Net.Mail;
 using iTextSharp.text;
 using iTextSharp.text.pdf;
 using ModuloWeb.ENTITIES;
 using MySql.Data.MySqlClient;
 using System.Collections.Generic;
+using SendGrid;
+using SendGrid.Helpers.Mail;
 
 namespace ModuloWeb.MANAGER
 {
@@ -34,16 +34,11 @@ namespace ModuloWeb.MANAGER
             foreach (var d in detalles)
                 broker.InsertarDetalle(idOrden, d.idProducto, d.cantidad, d.precio);
 
-            // Generar PDF (funciona en Railway)
+            // Generar PDF
             string rutaPDF = GenerarPDF(idOrden, idProveedor, total, detalles);
 
-            // SOLO enviar correo cuando estamos en desarrollo (local)
-            var env = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
-
-            if (env == "Development")
-            {
-                EnviarCorreo(idOrden, idProveedor, rutaPDF);
-            }
+            // Enviar correo (ahora con SendGrid)
+            EnviarCorreo(idOrden, idProveedor, rutaPDF);
 
             return idOrden;
         }
@@ -131,37 +126,51 @@ namespace ModuloWeb.MANAGER
             return ruta;
         }
 
-        // Enviar correo (SOLO funciona en local)
-        private void EnviarCorreo(int idOrden, int idProveedor, string rutaPDF)
+        // ✅ Enviar correo usando SendGrid (funciona en Railway)
+        private async void EnviarCorreo(int idOrden, int idProveedor, string rutaPDF)
         {
-            string proveedorCorreo = ObtenerCorreoProveedor(idProveedor);
-            string remitente = "lafontdiazsantiago@gmail.com";
-            string claveApp = "jeae szgh fkff fzyz";
-
-            using (MailMessage mail = new MailMessage())
+            try
             {
-                mail.From = new MailAddress(remitente, "Sistema de Órdenes");
-                mail.To.Add(proveedorCorreo);
-                mail.Subject = $"Orden de Compra #{idOrden}";
-                mail.Body = "Adjunto la orden de compra generada automáticamente.";
-                mail.Attachments.Add(new Attachment(rutaPDF));
-
-                using (SmtpClient smtp = new SmtpClient("smtp.gmail.com", 587))
+                string apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
+                if (string.IsNullOrWhiteSpace(apiKey))
                 {
-                    smtp.EnableSsl = true;
-                    smtp.UseDefaultCredentials = false;
-                    smtp.Credentials = new NetworkCredential(remitente, claveApp);
-
-                    try
-                    {
-                        smtp.Send(mail);
-                        Console.WriteLine("Correo enviado correctamente a " + proveedorCorreo);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine("Error al enviar correo: " + ex.Message);
-                    }
+                    Console.WriteLine("SENDGRID_API_KEY no está configurada. No se envía correo.");
+                    return;
                 }
+
+                string proveedorCorreo = ObtenerCorreoProveedor(idProveedor);
+                if (string.IsNullOrWhiteSpace(proveedorCorreo))
+                {
+                    Console.WriteLine("Proveedor sin correo válido. No se envía correo.");
+                    return;
+                }
+
+                var client = new SendGridClient(apiKey);
+
+                // Usa el correo que configuraste en SendGrid como remitente
+                var from = new EmailAddress("slafontd@eafit.edu.co", "Sistema de Órdenes");
+                var to = new EmailAddress(proveedorCorreo);
+
+                string subject = $"Orden de Compra #{idOrden}";
+                string plainTextContent = "Adjunto la orden de compra generada automáticamente.";
+                string htmlContent = "<p>Adjunto la orden de compra generada automáticamente.</p>";
+
+                var msg = MailHelper.CreateSingleEmail(from, to, subject, plainTextContent, htmlContent);
+
+                // Adjuntar PDF
+                if (File.Exists(rutaPDF))
+                {
+                    byte[] fileBytes = File.ReadAllBytes(rutaPDF);
+                    string fileBase64 = Convert.ToBase64String(fileBytes);
+                    msg.AddAttachment($"orden_{idOrden}.pdf", fileBase64);
+                }
+
+                var response = await client.SendEmailAsync(msg);
+                Console.WriteLine($"Correo enviado a {proveedorCorreo}. StatusCode: {response.StatusCode}");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Error al enviar correo con SendGrid: " + ex.Message);
             }
         }
 
