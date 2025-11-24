@@ -184,37 +184,60 @@ namespace ModuloWeb.MANAGER
         // =====================================
         // 4. Enviar correo con SendGrid (API)
         // =====================================
-        private void EnviarCorreo(int idOrden, string archivoExcel)
+        private void EnviarCorreo(int idOrden, int idProveedor, string rutaExcel)
         {
-            string apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY") ?? "";
-            string fromEmail = Environment.GetEnvironmentVariable("FROM_EMAIL") ?? "";
+            // 1. Correo del proveedor
+            string correoDestino = broker.ObtenerCorreoProveedor(idProveedor);
 
-            if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(fromEmail))
+            if (string.IsNullOrWhiteSpace(correoDestino))
             {
-                Console.WriteLine("SENDGRID_API_KEY o FROM_EMAIL no configurados. No se envía correo.");
+                Console.WriteLine("Proveedor sin correo, no se envía email.");
+                return;
+         }
+
+            // 2. From y API key desde variables de entorno
+            string fromEmail = Environment.GetEnvironmentVariable("FROM_EMAIL");
+            string apiKey    = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
+
+            if (string.IsNullOrWhiteSpace(fromEmail))
+            {
+                Console.WriteLine("FROM_EMAIL no está configurado.");
                 return;
             }
 
-            // correo del proveedor desde la BD
-            string correoDestino = broker.ObtenerCorreoProveedor(idOrden);
+            if (string.IsNullOrWhiteSpace(apiKey))
+            {
+                Console.WriteLine("SENDGRID_API_KEY no está configurado.");
+                return;
+            }
 
-            var client = new SendGridClient(apiKey);
-            var from = new EmailAddress(fromEmail, "Sistema de Órdenes");
-            var to = new EmailAddress(correoDestino);
+            var client = new SendGrid.SendGridClient(apiKey);
 
-            string subject = $"Orden de Compra #{idOrden}";
-            string textoPlano = "Adjunto la orden de compra generada automáticamente.";
+            var from = new SendGrid.Helpers.Mail.EmailAddress(fromEmail, "Sistema de Órdenes");
+            var to   = new SendGrid.Helpers.Mail.EmailAddress(correoDestino);
 
-            var msg = MailHelper.CreateSingleEmail(from, to, subject, textoPlano, null);
+            string subject   = $"Orden de Compra #{idOrden}";
+            string plainText = "Adjunto la orden de compra generada automáticamente.";
 
-            // Adjuntar Excel
-            byte[] bytes = File.ReadAllBytes(archivoExcel);
+            var msg = SendGrid.Helpers.Mail.MailHelper.CreateSingleEmail(from, to, subject, plainText, null);
+
+            // 3. Adjuntar el Excel
+            byte[] bytes  = File.ReadAllBytes(rutaExcel);
             string base64 = Convert.ToBase64String(bytes);
-            msg.AddAttachment(Path.GetFileName(archivoExcel), base64);
 
+            msg.AddAttachment(
+                Path.GetFileName(rutaExcel),
+                base64,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
+
+            // 4. Enviar y LOG COMPLETO
             var response = client.SendEmailAsync(msg).Result;
-
             Console.WriteLine($"STATUS SENDGRID: {response.StatusCode}");
+
+            var body = response.Body.ReadAsStringAsync().Result;
+            Console.WriteLine($"SENDGRID BODY: {body}");
         }
+
     }
 }
