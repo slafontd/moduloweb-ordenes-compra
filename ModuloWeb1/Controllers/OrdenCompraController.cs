@@ -49,7 +49,8 @@ namespace ModuloWeb1.Controllers
         // Lista de órdenes
         public IActionResult Lista()
         {
-            List<OrdenCompra> ordenes = manager.ObtenerOrdenes();
+            var manager = new OrdenCompraManager();
+            var ordenes = new List<OrdenCompra>();
             return View(ordenes);
         }
     }
