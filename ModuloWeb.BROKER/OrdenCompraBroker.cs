@@ -7,30 +7,23 @@ namespace ModuloWeb.BROKER
 {
     public class OrdenCompraBroker
     {
-        // --------------------------------------------------------------------
-        //  Helper: crea la conexión a MySQL
-        //  - En producción (Railway): usa la variable de entorno
-        //      ConnectionStrings__DefaultConnection
-        //  - En desarrollo local: si no existe esa variable,
-        //      usa ConexionBD.Conectar() como antes
-        // --------------------------------------------------------------------
+        // ==========================
+        //  Helper: crear conexión
+        // ==========================
         private MySqlConnection CrearConexion()
         {
-            // Intenta leer la cadena de conexión desde las variables de entorno
             var cs = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
 
             if (!string.IsNullOrWhiteSpace(cs))
-            {
                 return new MySqlConnection(cs);
-            }
 
-            // Fallback para desarrollo local (localhost, etc.)
+            // Desarrollo local
             return ConexionBD.Conectar();
         }
 
-        // --------------------------------------------------------------------
-        // Inserta la orden
-        // --------------------------------------------------------------------
+        // ==========================
+        // Insertar ENCABEZADO orden
+        // ==========================
         public int InsertarOrden(int idProveedor, decimal total)
         {
             using (var con = CrearConexion())
@@ -50,9 +43,9 @@ namespace ModuloWeb.BROKER
             }
         }
 
-        // --------------------------------------------------------------------
-        // Inserta los detalles de la orden
-        // --------------------------------------------------------------------
+        // ==========================
+        // Insertar DETALLE orden
+        // ==========================
         public void InsertarDetalle(int idOrden, int idProducto, int cantidad, decimal precio)
         {
             using (var con = CrearConexion())
@@ -77,9 +70,9 @@ namespace ModuloWeb.BROKER
             }
         }
 
-        // --------------------------------------------------------------------
-        // Obtiene todos los proveedores
-        // --------------------------------------------------------------------
+        // ==========================
+        // Listar proveedores
+        // ==========================
         public List<Proveedor> ObtenerProveedores()
         {
             var lista = new List<Proveedor>();
@@ -112,10 +105,10 @@ namespace ModuloWeb.BROKER
             return lista;
         }
 
-        // --------------------------------------------------------------------
-        // Obtiene un proveedor por ID (para el encabezado de la orden)
-        // --------------------------------------------------------------------
-        public Proveedor ObtenerProveedorPorId(int idProveedor)
+        // ==========================
+        // Obtener UN proveedor
+        // ==========================
+        public Proveedor? ObtenerProveedorPorId(int idProveedor)
         {
             using (var con = CrearConexion())
             {
@@ -129,10 +122,11 @@ namespace ModuloWeb.BROKER
 
                 cmd.Parameters.AddWithValue("@id", idProveedor);
 
-                var reader = cmd.ExecuteReader();
-
-                if (reader.Read())
+                using (var reader = cmd.ExecuteReader())
                 {
+                    if (!reader.Read())
+                        return null;
+
                     return new Proveedor
                     {
                         Id        = reader.GetInt32("id"),
@@ -143,36 +137,12 @@ namespace ModuloWeb.BROKER
                         Direccion = reader.GetString("direccion")
                     };
                 }
-
-                return null;
             }
         }
 
-        // --------------------------------------------------------------------
-        // Obtiene el correo del proveedor (para enviar la orden)
-        // --------------------------------------------------------------------
-        public string ObtenerCorreoProveedor(int idProveedor)
-        {
-            using (var con = CrearConexion())
-            {
-                con.Open();
-
-                var cmd = new MySqlCommand(
-                    "SELECT correo FROM proveedores WHERE id = @id",
-                    con
-                );
-
-                cmd.Parameters.AddWithValue("@id", idProveedor);
-
-                object result = cmd.ExecuteScalar();
-
-                return result?.ToString() ?? "";
-            }
-        }
-
-        // --------------------------------------------------------------------
-        // Obtiene todos los productos con su proveedor
-        // --------------------------------------------------------------------
+        // ==========================
+        // Listar productos
+        // ==========================
         public List<Producto> ObtenerProductos()
         {
             var lista = new List<Producto>();
@@ -203,9 +173,42 @@ namespace ModuloWeb.BROKER
             return lista;
         }
 
-        // --------------------------------------------------------------------
-        // Obtiene el precio real del producto desde BD
-        // --------------------------------------------------------------------
+        // ==========================
+        // Obtener UN producto
+        // ==========================
+        public Producto? ObtenerProductoPorId(int idProducto)
+        {
+            using (var con = CrearConexion())
+            {
+                con.Open();
+
+                var cmd = new MySqlCommand(
+                    "SELECT id, nombre, precio, id_proveedor " +
+                    "FROM productos WHERE id = @id",
+                    con
+                );
+
+                cmd.Parameters.AddWithValue("@id", idProducto);
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read())
+                        return null;
+
+                    return new Producto
+                    {
+                        Id          = reader.GetInt32("id"),
+                        Nombre      = reader.GetString("nombre"),
+                        Precio      = reader.GetDecimal("precio"),
+                        IdProveedor = reader.GetInt32("id_proveedor")
+                    };
+                }
+            }
+        }
+
+        // ==========================
+        // Precio de producto
+        // ==========================
         public decimal ObtenerPrecioProducto(int idProducto)
         {
             using (var con = CrearConexion())
@@ -225,6 +228,26 @@ namespace ModuloWeb.BROKER
                     return 0;
 
                 return Convert.ToDecimal(result);
+            }
+        }
+
+        // ==========================
+        // Correo de proveedor (para enviar)
+        // ==========================
+        public string? ObtenerCorreoProveedor(int idProveedor)
+        {
+            using (var con = CrearConexion())
+            {
+                con.Open();
+
+                var cmd = new MySqlCommand(
+                    "SELECT correo FROM proveedores WHERE id = @id",
+                    con
+                );
+
+                cmd.Parameters.AddWithValue("@id", idProveedor);
+
+                return cmd.ExecuteScalar()?.ToString();
             }
         }
     }

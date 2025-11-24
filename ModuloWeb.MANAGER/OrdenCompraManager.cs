@@ -1,12 +1,10 @@
 ﻿using ModuloWeb.BROKER;
-using ModuloWeb.ENTITIES;
-using MySql.Data.MySqlClient;
+using System;
+using System.IO;
+using System.Collections.Generic;
 using ClosedXML.Excel;
 using SendGrid;
 using SendGrid.Helpers.Mail;
-using System;
-using System.Collections.Generic;
-using System.IO;
 
 namespace ModuloWeb.MANAGER
 {
@@ -14,134 +12,141 @@ namespace ModuloWeb.MANAGER
     {
         private readonly OrdenCompraBroker broker = new OrdenCompraBroker();
 
-        // ================================
-        // 1. CREAR ORDEN
-        // ================================
-        public int CrearOrden(
-            int idProveedor,
-            decimal total,
-            List<(int idProducto, int cantidad, decimal precio)> detalles)
+        // ==============================
+        // 1. Crear orden
+        // ==============================
+        public int CrearOrden(int idProveedor, decimal total, List<(int idProducto, int cantidad, decimal precio)> detalles)
         {
-            // Insertar encabezado
+            // 1. Guarda en BD
             int idOrden = broker.InsertarOrden(idProveedor, total);
 
-            // Insertar detalles
             foreach (var d in detalles)
-            {
                 broker.InsertarDetalle(idOrden, d.idProducto, d.cantidad, d.precio);
-            }
 
-            // Generar Excel a partir de la plantilla
+            // 2. Genera Excel desde la plantilla
             string rutaExcel = GenerarExcel(idOrden, idProveedor, total, detalles);
 
-            // Enviar correo
+            // 3. Envía por correo
             EnviarCorreo(idOrden, idProveedor, rutaExcel);
 
             return idOrden;
         }
 
-        // ================================
-        // 2. GENERAR EXCEL DESDE PLANTILLA
-        // ================================
+        // ==============================
+        // 2. Generar Excel desde plantilla
+        // ==============================
         private string GenerarExcel(
             int idOrden,
             int idProveedor,
             decimal total,
             List<(int idProducto, int cantidad, decimal precio)> detalles)
         {
-            // Carpeta donde se guardan las órdenes
             string carpeta = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Ordenes");
             Directory.CreateDirectory(carpeta);
 
-            // Archivo de salida
-            string rutaSalida = Path.Combine(carpeta, $"Orden_{idOrden}.xlsx");
-
-            // Plantilla (asegúrate de que está marcada como Content / Copy to Output)
+            string rutaSalida    = Path.Combine(carpeta, $"Orden_{idOrden}.xlsx");
             string rutaPlantilla = Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,
                 "Plantillas",
                 "PlantillaOrdenes.xlsx");
 
             if (!File.Exists(rutaPlantilla))
-            {
-                throw new Exception($"No se encuentra la plantilla PlantillaOrdenes.xlsx en: {rutaPlantilla}");
-            }
+                throw new Exception($"No se encuentra la plantilla PlantillaOrdenes.xlsx en {rutaPlantilla}.");
 
-            // Abrir la plantilla y rellenar
+            var proveedor = broker.ObtenerProveedorPorId(idProveedor);
+
             using (var wb = new XLWorkbook(rutaPlantilla))
             {
-                var ws = wb.Worksheet(1); // primera hoja
+                var hoja      = wb.Worksheet("Hoja1");
+                var instancia = wb.Worksheet("Instancia");
 
-                // ===== Encabezado (ajusta celdas a tu plantilla) =====
-                ws.Cell("B2").Value = idOrden;
-                ws.Cell("B3").Value = idProveedor;
-                ws.Cell("B4").Value = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
-                ws.Cell("C5").Value = total;
+                // ==== Encabezado visible en Hoja1 ====
+                hoja.Cell("H6").Value = idOrden;                       // Nº de orden
+                hoja.Cell("H8").Value = DateTime.Now;                 // Fecha
+                hoja.Cell("C5").Value = total;                        // Total general (si usas esa celda)
 
-                // ===== Detalles =====
-                int fila = 8; // primera fila donde empiezan los productos
+                // ==== Encabezado en hoja Instancia ====
+                instancia.Cell("J2").Value = idOrden;                 // Consecutivo
+                instancia.Cell("H2").Value = total;                   // Total
+                instancia.Cell("I2").Value = "30 días";               // Condición de pago (ejemplo)
+
+                if (proveedor != null)
+                {
+                    instancia.Cell("L2").Value = proveedor.Nombre;    // Proveedor
+                    instancia.Cell("M2").Value = proveedor.Nit;       // NIT
+                    instancia.Cell("O2").Value = proveedor.Direccion; // Dirección
+                    instancia.Cell("P2").Value = proveedor.Correo;    // Contacto / correo
+                    instancia.Cell("Q2").Value = proveedor.Telefono;  // Teléfono
+                    instancia.Cell("B2").Value = proveedor.Nombre;    // Texto auxiliar
+                }
+
+                // ==== Detalles en la tabla de Hoja1 (filas 20 en adelante) ====
+                int fila = 20;
+                int item = 1;
 
                 foreach (var d in detalles)
                 {
-                    ws.Cell(fila, 1).Value = d.idProducto;            // Columna A
-                    ws.Cell(fila, 2).Value = d.cantidad;              // Columna B
-                    ws.Cell(fila, 3).Value = d.precio;                // Columna C
-                    ws.Cell(fila, 4).Value = d.cantidad * d.precio;   // Columna D (subtotal)
+                    var prod = broker.ObtenerProductoPorId(d.idProducto);
+
+                    hoja.Cell(fila, 2).Value = item;                                // B: ítem
+                    hoja.Cell(fila, 3).Value = prod?.Id ?? d.idProducto;            // C: código
+                    hoja.Cell(fila, 4).Value = prod?.Nombre ?? $"Producto {d.idProducto}"; // D: descripción
+                    hoja.Cell(fila, 5).Value = d.cantidad;                          // E: cantidad
+                    hoja.Cell(fila, 6).Value = "UND";                               // F: unidad
+                    hoja.Cell(fila, 7).Value = d.precio;                             // G: valor unitario
+                    hoja.Cell(fila, 8).Value = d.cantidad * d.precio;               // H: valor total
+
                     fila++;
+                    item++;
                 }
 
-                // Guardar el archivo final
                 wb.SaveAs(rutaSalida);
             }
 
             return rutaSalida;
         }
 
-        // ================================
-        // 3. ENVIAR CORREO CON SENDGRID
-        // ================================
-        private void EnviarCorreo(int idOrden, int idProveedor, string rutaExcel)
+        // ==============================
+        // 3. Enviar correo con SendGrid
+        // ==============================
+        private void EnviarCorreo(int idOrden, int idProveedor, string archivo)
         {
-            // Correo del proveedor desde BD
-            string correoDestino = broker.ObtenerCorreoProveedor(idProveedor);
+            string? correoDestino = broker.ObtenerCorreoProveedor(idProveedor);
+
             if (string.IsNullOrWhiteSpace(correoDestino))
             {
-                Console.WriteLine("Proveedor sin correo, no se envía email.");
+                Console.WriteLine("El proveedor no tiene correo configurado. No se envía correo.");
                 return;
             }
 
-            // From y API key desde variables de entorno
-            string remitente = Environment.GetEnvironmentVariable("FROM_EMAIL");
-            if (string.IsNullOrWhiteSpace(remitente))
-                throw new Exception("La variable de entorno FROM_EMAIL no está configurada.");
+            // Tomamos remitente y API key desde variables de entorno
+            string? fromEmail = Environment.GetEnvironmentVariable("FROM_EMAIL");
+            string? apiKey    = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
 
-            string apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
-            if (string.IsNullOrWhiteSpace(apiKey))
-                throw new Exception("La variable de entorno SENDGRID_API_KEY no está configurada.");
+            if (string.IsNullOrWhiteSpace(fromEmail) || string.IsNullOrWhiteSpace(apiKey))
+            {
+                Console.WriteLine("Falta FROM_EMAIL o SENDGRID_API_KEY en variables de entorno. No se envía correo.");
+                return;
+            }
 
-            var client = new SendGridClient(apiKey);
+            var client  = new SendGridClient(apiKey);
+            var from    = new EmailAddress(fromEmail, "Sistema de Órdenes");
+            var to      = new EmailAddress(correoDestino);
+            var subject = $"Orden de Compra #{idOrden}";
+            var plain   = "Adjunto la orden de compra generada automáticamente.";
 
-            var from = new EmailAddress(remitente, "Sistema de Órdenes");
-            var to = new EmailAddress(correoDestino);
+            var msg = MailHelper.CreateSingleEmail(from, to, subject, plain, null);
 
-            string subject = $"Orden de Compra #{idOrden}";
-            string plainText = "Adjunto la orden de compra generada automáticamente.";
+            // Adjuntamos el Excel generado
+            byte[] archivoBytes  = File.ReadAllBytes(archivo);
+            string archivoBase64 = Convert.ToBase64String(archivoBytes);
 
-            var msg = MailHelper.CreateSingleEmail(from, to, subject, plainText, null);
-
-            // Leer el Excel generado
-            byte[] bytes = File.ReadAllBytes(rutaExcel);
-            string base64 = Convert.ToBase64String(bytes);
-
-            // Adjuntar con tipo MIME de Excel
-            msg.AddAttachment(
-                $"Orden_{idOrden}.xlsx",
-                base64,
-                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            );
+            msg.AddAttachment(Path.GetFileName(archivo), archivoBase64);
 
             var response = client.SendEmailAsync(msg).Result;
+
             Console.WriteLine($"STATUS SENDGRID: {response.StatusCode}");
         }
     }
 }
+
