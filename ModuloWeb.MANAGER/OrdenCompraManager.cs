@@ -1,10 +1,12 @@
 ﻿using ModuloWeb.BROKER;
-using System;
-using System.IO;
-using System.Collections.Generic;
+using ModuloWeb.ENTITIES;
+using MySql.Data.MySqlClient;
 using ClosedXML.Excel;
 using SendGrid;
 using SendGrid.Helpers.Mail;
+using System;
+using System.Collections.Generic;
+using System.IO;
 
 namespace ModuloWeb.MANAGER
 {
@@ -12,39 +14,160 @@ namespace ModuloWeb.MANAGER
     {
         private readonly OrdenCompraBroker broker = new OrdenCompraBroker();
 
-        // ==============================
-        // 1. Crear orden
-        // ==============================
-        public int CrearOrden(int idProveedor, decimal total, List<(int idProducto, int cantidad, decimal precio)> detalles)
+        // =====================================================
+        // 0. Helper: conexión (Railway o local según el entorno)
+        // =====================================================
+        private MySqlConnection CrearConexion()
         {
-            // 1. Guarda en BD
-            int idOrden = broker.InsertarOrden(idProveedor, total);
+            var cs = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
+            if (!string.IsNullOrWhiteSpace(cs))
+                return new MySqlConnection(cs);
 
-            foreach (var d in detalles)
-                broker.InsertarDetalle(idOrden, d.idProducto, d.cantidad, d.precio);
-
-            // 2. Genera Excel desde la plantilla
-            string rutaExcel = GenerarExcel(idOrden, idProveedor, total, detalles);
-
-            // 3. Envía por correo
-            EnviarCorreo(idOrden, idProveedor, rutaExcel);
-
-            return idOrden;
+            // modo local
+            return ConexionBD.Conectar();
         }
 
-        // ==============================
-        // 2. Generar Excel desde plantilla
-        // ==============================
-        private string GenerarExcel(
-            int idOrden,
+        // =======================================
+        // 1. Crear ORDEN + DETALLES + EXCEL + MAIL
+        // =======================================
+        public int CrearOrden(
             int idProveedor,
             decimal total,
             List<(int idProducto, int cantidad, decimal precio)> detalles)
         {
+            // 1. Inserta encabezado
+            int idOrden = broker.InsertarOrden(idProveedor, total);
+
+            // 2. Inserta detalle
+            foreach (var d in detalles)
+                broker.InsertarDetalle(idOrden, d.idProducto, d.cantidad, d.precio);
+
+            // 3. Generar Excel LEYENDO la orden desde BD
+            string rutaExcel = GenerarExcel(idOrden);
+
+            // 4. Enviar correo al proveedor
+            EnviarCorreo(idOrden, rutaExcel);
+
+            return idOrden;
+        }
+
+        // ===========================
+        // 2. Listar órdenes desde BD
+        // ===========================
+        public List<OrdenCompra> ObtenerOrdenes()
+        {
+            var lista = new List<OrdenCompra>();
+
+            using (var con = CrearConexion())
+            {
+                con.Open();
+                var cmd = new MySqlCommand(
+                    "SELECT id_orden, id_proveedor, total, fecha, estado " +
+                    "FROM ordenes_compra ORDER BY fecha DESC",
+                    con);
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        lista.Add(new OrdenCompra
+                        {
+                            IdOrden = reader.GetInt32("id_orden"),
+                            IdProveedor = reader.GetInt32("id_proveedor"),
+                            Total = reader.GetDecimal("total"),
+                            Fecha = reader.GetDateTime("fecha"),
+                            Estado = reader.GetString("estado")
+                        });
+                    }
+                }
+            }
+
+            return lista;
+        }
+
+        // ==========================================
+        // 3. Generar EXCEL a partir de lo guardado
+        // ==========================================
+        private string GenerarExcel(int idOrden)
+        {
+            // ----- 3.1. Leer encabezado + proveedor -----
+            string proveedorNombre = "";
+            string proveedorNit = "";
+            decimal total = 0;
+            DateTime fecha = DateTime.Now;
+
+            using (var con = CrearConexion())
+            {
+                con.Open();
+
+                var cmd = new MySqlCommand(@"
+                    SELECT o.id_orden,
+                           o.id_proveedor,
+                           o.total,
+                           o.fecha,
+                           p.nombre   AS proveedor_nombre,
+                           p.nit      AS proveedor_nit
+                    FROM ordenes_compra o
+                    JOIN proveedores p ON p.id = o.id_proveedor
+                    WHERE o.id_orden = @id;", con);
+
+                cmd.Parameters.AddWithValue("@id", idOrden);
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    if (!reader.Read())
+                        throw new Exception($"No se encontró la orden {idOrden} en la base de datos.");
+
+                    proveedorNombre = reader.GetString("proveedor_nombre");
+                    proveedorNit = reader.IsDBNull(reader.GetOrdinal("proveedor_nit"))
+                        ? ""
+                        : reader.GetString("proveedor_nit");
+
+                    total = reader.GetDecimal("total");
+                    fecha = reader.GetDateTime("fecha");
+                }
+            }
+
+            // ----- 3.2. Leer detalles con nombre de producto -----
+            var detalles = new List<(int idProducto, string nombre, int cantidad, decimal precio, decimal subtotal)>();
+
+            using (var con = CrearConexion())
+            {
+                con.Open();
+
+                var cmd = new MySqlCommand(@"
+                    SELECT d.id_producto,
+                           pr.nombre,
+                           d.cantidad,
+                           d.precio,
+                           d.subtotal
+                    FROM detalle_orden d
+                    JOIN productos pr ON pr.id = d.id_producto
+                    WHERE d.id_orden = @id;", con);
+
+                cmd.Parameters.AddWithValue("@id", idOrden);
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        detalles.Add((
+                            reader.GetInt32("id_producto"),
+                            reader.GetString("nombre"),
+                            reader.GetInt32("cantidad"),
+                            reader.GetDecimal("precio"),
+                            reader.GetDecimal("subtotal")
+                        ));
+                    }
+                }
+            }
+
+            // ----- 3.3. Preparar rutas -----
             string carpeta = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Ordenes");
             Directory.CreateDirectory(carpeta);
 
-            string rutaSalida    = Path.Combine(carpeta, $"Orden_{idOrden}.xlsx");
+            string rutaSalida = Path.Combine(carpeta, $"Orden_{idOrden}.xlsx");
+
             string rutaPlantilla = Path.Combine(
                 AppDomain.CurrentDomain.BaseDirectory,
                 "Plantillas",
@@ -53,51 +176,29 @@ namespace ModuloWeb.MANAGER
             if (!File.Exists(rutaPlantilla))
                 throw new Exception($"No se encuentra la plantilla PlantillaOrdenes.xlsx en {rutaPlantilla}.");
 
-            var proveedor = broker.ObtenerProveedorPorId(idProveedor);
-
+            // ----- 3.4. Abrir plantilla y rellenar -----
             using (var wb = new XLWorkbook(rutaPlantilla))
             {
-                var hoja      = wb.Worksheet("Hoja1");
-                var instancia = wb.Worksheet("Instancia");
+                var ws = wb.Worksheet(1);
 
-                // ==== Encabezado visible en Hoja1 ====
-                hoja.Cell("H6").Value = idOrden;                       // Nº de orden
-                hoja.Cell("H8").Value = DateTime.Now;                 // Fecha
-                hoja.Cell("C5").Value = total;                        // Total general (si usas esa celda)
+                // ENCABEZADO – AJUSTA CELDAS SEGÚN TU PLANTILLA
+                ws.Cell("B2").Value = idOrden;
+                ws.Cell("B3").Value = proveedorNombre;
+                ws.Cell("B4").Value = proveedorNit;
+                ws.Cell("B5").Value = fecha.ToString("dd/MM/yyyy HH:mm");
+                ws.Cell("B6").Value = total;
 
-                // ==== Encabezado en hoja Instancia ====
-                instancia.Cell("J2").Value = idOrden;                 // Consecutivo
-                instancia.Cell("H2").Value = total;                   // Total
-                instancia.Cell("I2").Value = "30 días";               // Condición de pago (ejemplo)
-
-                if (proveedor != null)
-                {
-                    instancia.Cell("L2").Value = proveedor.Nombre;    // Proveedor
-                    instancia.Cell("M2").Value = proveedor.Nit;       // NIT
-                    instancia.Cell("O2").Value = proveedor.Direccion; // Dirección
-                    instancia.Cell("P2").Value = proveedor.Correo;    // Contacto / correo
-                    instancia.Cell("Q2").Value = proveedor.Telefono;  // Teléfono
-                    instancia.Cell("B2").Value = proveedor.Nombre;    // Texto auxiliar
-                }
-
-                // ==== Detalles en la tabla de Hoja1 (filas 20 en adelante) ====
-                int fila = 20;
-                int item = 1;
+                // DETALLES – fila inicial (ajústala a tu plantilla)
+                int fila = 10;   // por ejemplo, fila 10
 
                 foreach (var d in detalles)
                 {
-                    var prod = broker.ObtenerProductoPorId(d.idProducto);
-
-                    hoja.Cell(fila, 2).Value = item;                                // B: ítem
-                    hoja.Cell(fila, 3).Value = prod?.Id ?? d.idProducto;            // C: código
-                    hoja.Cell(fila, 4).Value = prod?.Nombre ?? $"Producto {d.idProducto}"; // D: descripción
-                    hoja.Cell(fila, 5).Value = d.cantidad;                          // E: cantidad
-                    hoja.Cell(fila, 6).Value = "UND";                               // F: unidad
-                    hoja.Cell(fila, 7).Value = d.precio;                             // G: valor unitario
-                    hoja.Cell(fila, 8).Value = d.cantidad * d.precio;               // H: valor total
-
+                    ws.Cell(fila, 1).Value = d.idProducto;
+                    ws.Cell(fila, 2).Value = d.nombre;
+                    ws.Cell(fila, 3).Value = d.cantidad;
+                    ws.Cell(fila, 4).Value = d.precio;
+                    ws.Cell(fila, 5).Value = d.subtotal;
                     fila++;
-                    item++;
                 }
 
                 wb.SaveAs(rutaSalida);
@@ -106,42 +207,36 @@ namespace ModuloWeb.MANAGER
             return rutaSalida;
         }
 
-        // ==============================
-        // 3. Enviar correo con SendGrid
-        // ==============================
-        private void EnviarCorreo(int idOrden, int idProveedor, string archivo)
+        // =====================================
+        // 4. Enviar correo con SendGrid (API)
+        // =====================================
+        private void EnviarCorreo(int idOrden, string archivoExcel)
         {
-            string? correoDestino = broker.ObtenerCorreoProveedor(idProveedor);
+            string apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY") ?? "";
+            string fromEmail = Environment.GetEnvironmentVariable("FROM_EMAIL") ?? "";
 
-            if (string.IsNullOrWhiteSpace(correoDestino))
+            if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(fromEmail))
             {
-                Console.WriteLine("El proveedor no tiene correo configurado. No se envía correo.");
+                Console.WriteLine("SENDGRID_API_KEY o FROM_EMAIL no configurados. No se envía correo.");
                 return;
             }
 
-            // Tomamos remitente y API key desde variables de entorno
-            string? fromEmail = Environment.GetEnvironmentVariable("FROM_EMAIL");
-            string? apiKey    = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
+            // correo del proveedor desde la BD
+            string correoDestino = broker.ObtenerCorreoProveedor(idOrden);
 
-            if (string.IsNullOrWhiteSpace(fromEmail) || string.IsNullOrWhiteSpace(apiKey))
-            {
-                Console.WriteLine("Falta FROM_EMAIL o SENDGRID_API_KEY en variables de entorno. No se envía correo.");
-                return;
-            }
+            var client = new SendGridClient(apiKey);
+            var from = new EmailAddress(fromEmail, "Sistema de Órdenes");
+            var to = new EmailAddress(correoDestino);
 
-            var client  = new SendGridClient(apiKey);
-            var from    = new EmailAddress(fromEmail, "Sistema de Órdenes");
-            var to      = new EmailAddress(correoDestino);
-            var subject = $"Orden de Compra #{idOrden}";
-            var plain   = "Adjunto la orden de compra generada automáticamente.";
+            string subject = $"Orden de Compra #{idOrden}";
+            string textoPlano = "Adjunto la orden de compra generada automáticamente.";
 
-            var msg = MailHelper.CreateSingleEmail(from, to, subject, plain, null);
+            var msg = MailHelper.CreateSingleEmail(from, to, subject, textoPlano, null);
 
-            // Adjuntamos el Excel generado
-            byte[] archivoBytes  = File.ReadAllBytes(archivo);
-            string archivoBase64 = Convert.ToBase64String(archivoBytes);
-
-            msg.AddAttachment(Path.GetFileName(archivo), archivoBase64);
+            // Adjuntar Excel
+            byte[] bytes = File.ReadAllBytes(archivoExcel);
+            string base64 = Convert.ToBase64String(bytes);
+            msg.AddAttachment(Path.GetFileName(archivoExcel), base64);
 
             var response = client.SendEmailAsync(msg).Result;
 
@@ -149,4 +244,3 @@ namespace ModuloWeb.MANAGER
         }
     }
 }
-
