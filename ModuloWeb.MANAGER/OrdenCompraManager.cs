@@ -1,13 +1,15 @@
 ﻿using ModuloWeb.BROKER;
 using System;
 using System.IO;
+using System.Net;
+using System.Net.Mail;
 using iTextSharp.text;
 using iTextSharp.text.pdf;
 using ModuloWeb.ENTITIES;
 using MySql.Data.MySqlClient;
 using System.Collections.Generic;
-using SendGrid;
-using SendGrid.Helpers.Mail;
+using ClosedXML.Excel;
+
 
 namespace ModuloWeb.MANAGER
 {
@@ -15,19 +17,9 @@ namespace ModuloWeb.MANAGER
     {
         private readonly OrdenCompraBroker broker = new OrdenCompraBroker();
 
-        // Helper: crea la conexión a MySQL
-        private MySqlConnection CrearConexion()
-        {
-            var cs = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
-
-            if (!string.IsNullOrWhiteSpace(cs))
-                return new MySqlConnection(cs);
-
-            // Para desarrollo local
-            return ConexionBD.Conectar();
-        }
-
-        // Crear nueva orden de compra
+        // ================================
+        // 1. MÉTODO PARA CREAR ORDEN
+        // ================================
         public int CrearOrden(int idProveedor, decimal total, List<(int idProducto, int cantidad, decimal precio)> detalles)
         {
             int idOrden = broker.InsertarOrden(idProveedor, total);
@@ -35,176 +27,92 @@ namespace ModuloWeb.MANAGER
             foreach (var d in detalles)
                 broker.InsertarDetalle(idOrden, d.idProducto, d.cantidad, d.precio);
 
-            string rutaPDF = GenerarPDF(idOrden, idProveedor, total, detalles);
+            // 👉 Generar archivo Excel
+            string rutaExcel = GenerarExcel(idOrden, idProveedor, total, detalles);
 
-            EnviarCorreo(idOrden, idProveedor, rutaPDF);
+            // 👉 Enviar por correo
+            EnviarCorreo(idOrden, idProveedor, rutaExcel);
 
             return idOrden;
         }
 
-        // Obtener órdenes
-        public List<OrdenCompra> ObtenerOrdenes()
+        // ================================
+        // 2. MÉTODO PARA GENERAR EXCEL
+        // ================================
+        private string GenerarExcel(int idOrden, int idProveedor, decimal total,
+                                   List<(int idProducto, int cantidad, decimal precio)> detalles)
         {
-            List<OrdenCompra> lista = new List<OrdenCompra>();
-
-            using (var con = CrearConexion())
-            {
-                con.Open();
-
-                var cmd = new MySqlCommand(
-                    "SELECT id_orden, id_proveedor, total, fecha, estado FROM ordenes_compra",
-                    con
-                );
-
-                var reader = cmd.ExecuteReader();
-
-                while (reader.Read())
-                {
-                    lista.Add(new OrdenCompra
-                    {
-                        IdOrden = reader.GetInt32("id_orden"),
-                        IdProveedor = reader.GetInt32("id_proveedor"),
-                        Total = reader.GetDecimal("total"),
-                        Fecha = reader.GetDateTime("fecha"),
-                        Estado = reader.GetString("estado")
-                    });
-                }
-            }
-
-            return lista;
-        }
-
-        // Generar PDF dentro de /tmp (para funcionar en Railway)
-        private string GenerarPDF(int idOrden, int idProveedor, decimal total, List<(int, int, decimal)> detalles)
-        {
-            string carpeta = "/tmp/Ordenes";
+            string carpeta = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Ordenes");
             Directory.CreateDirectory(carpeta);
 
-            string ruta = Path.Combine(carpeta, $"orden_{idOrden}.pdf");
+            string rutaSalida = Path.Combine(carpeta, $"Orden_{idOrden}.xlsx");
 
-            using (FileStream fs = new FileStream(ruta, FileMode.Create, FileAccess.Write, FileShare.None))
+            // Ruta de tu plantilla original
+            string rutaPlantilla = Path.Combine(AppDomain.CurrentDomain.BaseDirectory,
+                                                "Plantillas", "PlantillaOrdenes.xlsx");
+
+            if (!File.Exists(rutaPlantilla))
+                throw new Exception("La plantilla PlantillaOrdenes.xlsx no existe en el servidor.");
+
+            // Abrir plantilla
+            using (var wb = new XLWorkbook(rutaPlantilla))
             {
-                using (Document doc = new Document(PageSize.A4, 50, 50, 50, 50))
+                var ws = wb.Worksheet(1);
+
+                // ===== RELLENAR ENCABEZADO =====
+                ws.Cell("B2").Value = idOrden;
+                ws.Cell("B3").Value = idProveedor;
+                ws.Cell("B4").Value = DateTime.Now.ToString("dd/MM/yyyy HH:mm");
+
+                // ===== RELLENAR DETALLES =====
+                int fila = 8;
+
+                foreach (var d in detalles)
                 {
-                    PdfWriter.GetInstance(doc, fs);
-                    doc.Open();
-
-                    var titulo = new Paragraph(
-                        $"ORDEN DE COMPRA #{idOrden}",
-                        FontFactory.GetFont(FontFactory.HELVETICA_BOLD, 16)
-                    )
-                    {
-                        Alignment = Element.ALIGN_CENTER
-                    };
-
-                    doc.Add(titulo);
-                    doc.Add(new Paragraph("\n"));
-                    doc.Add(new Paragraph($"Proveedor: {idProveedor}"));
-                    doc.Add(new Paragraph($"Fecha: {DateTime.Now:dd/MM/yyyy HH:mm}"));
-                    doc.Add(new Paragraph(" "));
-
-                    PdfPTable tabla = new PdfPTable(3);
-                    tabla.WidthPercentage = 100;
-                    tabla.AddCell("Producto");
-                    tabla.AddCell("Cantidad");
-                    tabla.AddCell("Precio");
-
-                    foreach (var d in detalles)
-                    {
-                        tabla.AddCell(d.Item1.ToString());
-                        tabla.AddCell(d.Item2.ToString());
-                        tabla.AddCell($"{d.Item3:C}");
-                    }
-
-                    doc.Add(tabla);
-                    doc.Add(new Paragraph("\n"));
-                    doc.Add(new Paragraph($"Total: {total:C}"));
-
-                    doc.Close();
+                    ws.Cell(fila, 1).Value = d.idProducto;
+                    ws.Cell(fila, 2).Value = d.cantidad;
+                    ws.Cell(fila, 3).Value = d.precio;
+                    ws.Cell(fila, 4).Value = d.cantidad * d.precio;
+                    fila++;
                 }
+
+                // TOTAL
+                ws.Cell("C5").Value = total;
+
+                // Guardar archivo final
+                wb.SaveAs(rutaSalida);
             }
 
-            return ruta;
+            return rutaSalida;
         }
 
-        // ========== ENVÍO DE CORREO CON SENDGRID ========== //
-        private async void EnviarCorreo(int idOrden, int idProveedor, string rutaPDF)
+        // ================================
+        // 3. MÉTODO PARA ENVIAR CORREO
+        // ================================
+        private void EnviarCorreo(int idOrden, int idProveedor, string archivo)
         {
-            try
-            {
-                // API key de SendGrid desde Railway
-                string apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
-                if (string.IsNullOrWhiteSpace(apiKey))
-                {
-                    Console.WriteLine("ERROR: SENDGRID_API_KEY no está configurada.");
-                    return;
-                }
+            string correoDestino = broker.ObtenerCorreoProveedor(idProveedor);
 
-                // Correo del proveedor desde la BD
-                string proveedorCorreo = ObtenerCorreoProveedor(idProveedor);
-                if (string.IsNullOrWhiteSpace(proveedorCorreo))
-                {
-                    Console.WriteLine("ERROR: El proveedor no tiene correo.");
-                    return;
-                }
+            string remitente = "ordenes@moduloweb.com"; 
+            string apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
 
-                // Correo remitente verificado en SendGrid
-                string fromEmail = Environment.GetEnvironmentVariable("FROM_EMAIL");
-                if (string.IsNullOrWhiteSpace(fromEmail))
-                {
-                    Console.WriteLine("ERROR: FROM_EMAIL no está configurado.");
-                    return;
-                }
+            var client = new SendGrid.SendGridClient(apiKey);
+            var from = new SendGrid.Helpers.Mail.EmailAddress(remitente, "Sistema de Órdenes");
+            var to = new SendGrid.Helpers.Mail.EmailAddress(correoDestino);
+            var subject = $"Orden de Compra #{idOrden}";
+            var plainText = "Adjunto la orden de compra generada automáticamente.";
 
-                var client = new SendGridClient(apiKey);
+            var msg = SendGrid.Helpers.Mail.MailHelper.CreateSingleEmail(from, to, subject, plainText, null);
 
-                var from = new EmailAddress(fromEmail, "Sistema de Órdenes");
-                var to = new EmailAddress(proveedorCorreo);
+            // Adjuntar archivo Excel
+            byte[] archivoBytes = File.ReadAllBytes(archivo);
+            string archivoBase64 = Convert.ToBase64String(archivoBytes);
 
-                string subject = $"Orden de Compra #{idOrden}";
-                string plainTextContent = "Adjunto la orden de compra generada automáticamente.";
-                string htmlContent = "<p>Adjunto la orden de compra generada automáticamente.</p>";
+            msg.AddAttachment($"Orden_{idOrden}.xlsx", archivoBase64);
 
-                var msg = MailHelper.CreateSingleEmail(from, to, subject, plainTextContent, htmlContent);
+            var response = client.SendEmailAsync(msg).Result;
 
-                // Adjuntar PDF
-                if (File.Exists(rutaPDF))
-                {
-                    byte[] fileBytes = File.ReadAllBytes(rutaPDF);
-                    string fileBase64 = Convert.ToBase64String(fileBytes);
-                    msg.AddAttachment($"orden_{idOrden}.pdf", fileBase64);
-                }
-
-                var response = await client.SendEmailAsync(msg);
-
-                string responseBody = await response.Body.ReadAsStringAsync();
-
-                Console.WriteLine($"STATUS SENDGRID: {response.StatusCode}");
-                Console.WriteLine("RESPUESTA SENDGRID:");
-                Console.WriteLine(responseBody);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine("Error al enviar correo con SendGrid: " + ex.Message);
-            }
-        }
-
-        // Obtener correo del proveedor
-        private string ObtenerCorreoProveedor(int idProveedor)
-        {
-            using (var con = CrearConexion())
-            {
-                con.Open();
-
-                var cmd = new MySqlCommand(
-                    "SELECT correo FROM proveedores WHERE id=@id",
-                    con
-                );
-
-                cmd.Parameters.AddWithValue("@id", idProveedor);
-
-                return cmd.ExecuteScalar()?.ToString() ?? "";
-            }
+            Console.WriteLine($"STATUS SENDGRID: {response.StatusCode}");
         }
     }
 }

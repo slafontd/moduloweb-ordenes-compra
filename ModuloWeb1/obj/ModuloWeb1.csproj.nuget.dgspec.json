@@ -225,6 +225,10 @@
         "net8.0": {
           "targetAlias": "net8.0",
           "dependencies": {
+            "ClosedXML": {
+              "target": "Package",
+              "version": "[0.105.0, )"
+            },
             "SendGrid": {
               "target": "Package",
               "version": "[9.29.3, )"

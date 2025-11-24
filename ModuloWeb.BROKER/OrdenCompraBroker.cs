@@ -89,7 +89,7 @@ namespace ModuloWeb.BROKER
                 con.Open();
 
                 var cmd = new MySqlCommand(
-                    "SELECT id, nombre, correo, telefono, direccion FROM proveedores",
+                    "SELECT id, nombre, nit, correo, telefono, direccion FROM proveedores",
                     con
                 );
 
@@ -99,16 +99,75 @@ namespace ModuloWeb.BROKER
                 {
                     lista.Add(new Proveedor
                     {
-                        Id = reader.GetInt32("id"),
-                        Nombre = reader.GetString("nombre"),
-                        Correo = reader.GetString("correo"),
-                        Telefono = reader.GetString("telefono"),
+                        Id        = reader.GetInt32("id"),
+                        Nombre    = reader.GetString("nombre"),
+                        Nit       = reader["nit"] != DBNull.Value ? reader.GetString("nit") : "",
+                        Correo    = reader.GetString("correo"),
+                        Telefono  = reader.GetString("telefono"),
                         Direccion = reader.GetString("direccion")
                     });
                 }
             }
 
             return lista;
+        }
+
+        // --------------------------------------------------------------------
+        // Obtiene un proveedor por ID (para el encabezado de la orden)
+        // --------------------------------------------------------------------
+        public Proveedor ObtenerProveedorPorId(int idProveedor)
+        {
+            using (var con = CrearConexion())
+            {
+                con.Open();
+
+                var cmd = new MySqlCommand(
+                    "SELECT id, nombre, nit, correo, telefono, direccion " +
+                    "FROM proveedores WHERE id = @id",
+                    con
+                );
+
+                cmd.Parameters.AddWithValue("@id", idProveedor);
+
+                var reader = cmd.ExecuteReader();
+
+                if (reader.Read())
+                {
+                    return new Proveedor
+                    {
+                        Id        = reader.GetInt32("id"),
+                        Nombre    = reader.GetString("nombre"),
+                        Nit       = reader["nit"] != DBNull.Value ? reader.GetString("nit") : "",
+                        Correo    = reader.GetString("correo"),
+                        Telefono  = reader.GetString("telefono"),
+                        Direccion = reader.GetString("direccion")
+                    };
+                }
+
+                return null;
+            }
+        }
+
+        // --------------------------------------------------------------------
+        // Obtiene el correo del proveedor (para enviar la orden)
+        // --------------------------------------------------------------------
+        public string ObtenerCorreoProveedor(int idProveedor)
+        {
+            using (var con = CrearConexion())
+            {
+                con.Open();
+
+                var cmd = new MySqlCommand(
+                    "SELECT correo FROM proveedores WHERE id = @id",
+                    con
+                );
+
+                cmd.Parameters.AddWithValue("@id", idProveedor);
+
+                object result = cmd.ExecuteScalar();
+
+                return result?.ToString() ?? "";
+            }
         }
 
         // --------------------------------------------------------------------
@@ -133,9 +192,9 @@ namespace ModuloWeb.BROKER
                 {
                     lista.Add(new Producto
                     {
-                        Id = reader.GetInt32("id"),
-                        Nombre = reader.GetString("nombre"),
-                        Precio = reader.GetDecimal("precio"),
+                        Id          = reader.GetInt32("id"),
+                        Nombre      = reader.GetString("nombre"),
+                        Precio      = reader.GetDecimal("precio"),
                         IdProveedor = reader.GetInt32("id_proveedor")
                     });
                 }
