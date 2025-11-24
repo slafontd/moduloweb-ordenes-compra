@@ -15,7 +15,7 @@
             <div class="row mb-3">
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Proveedor:</label>
-                    <select id="proveedorSelect" name="idProveedor" class="form-select" onchange="filtrarProductosPorProveedor()" required>
+                    <select id="proveedorSelect" name="IdProveedor" class="form-select" onchange="filtrarProductosPorProveedor()" required>
                         <option value="">Seleccione un proveedor</option>
                         @foreach (var p in ViewBag.Proveedores)
                         {
@@ -26,21 +26,22 @@
 
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Condiciones de pago:</label>
-                    <input type="text" name="condiciones" class="form-control" value="30 días" />
+                    <input type="text" name="Condiciones" class="form-control" value="30 días" />
                 </div>
             </div>
 
             <hr />
             <h4 class="text-secondary">🛒 Productos</h4>
 
-            <!-- LISTA DE PRODUCTOS -->
+            <!-- CONTENEDOR DE FILAS -->
             <div id="productos" class="mb-3">
 
                 <!-- FILA MODELO -->
                 <div class="row g-3 align-items-center mb-2 detalle border-bottom pb-2">
+                    
                     <div class="col-md-4">
                         <label class="form-label">Producto</label>
-                        <select name="idProducto" class="form-select producto-select" onchange="actualizarPrecio(this)" required>
+                        <select name="IdProducto" class="form-select producto-select" onchange="actualizarPrecio(this)" required>
                             <option value="">Seleccione un producto</option>
                             @foreach (var pr in ViewBag.Productos)
                             {
@@ -53,16 +54,25 @@
                         </select>
                     </div>
 
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">Cantidad</label>
-                        <input type="number" name="cantidad" class="form-control cantidad-input" min="1" value="1" required />
+                        <input type="number" name="Cantidad" class="form-control cantidad-input" min="1" value="1" required />
                     </div>
 
-                    <div class="col-md-4">
+                    <div class="col-md-3">
                         <label class="form-label">Precio Unitario</label>
-                        <input type="text" name="precio" class="form-control precio-input" readonly />
+                        <input type="text" name="PrecioUnitario" class="form-control precio-input" readonly />
                     </div>
+
+                    <div class="col-md-2 text-center">
+                        <label class="form-label d-block">&nbsp;</label>
+                        <button type="button" class="btn btn-danger" onclick="eliminarFila(this)">
+                            ❌
+                        </button>
+                    </div>
+
                 </div>
+
             </div>
 
             <button type="button" class="btn btn-outline-primary mb-3" onclick="agregarFila()">
@@ -103,52 +113,66 @@
 
 <script>
 
-    // ➕ DUPLICAR FILA
+    // DUPLICAR FILA
     function agregarFila() {
         const original = document.querySelector(".detalle");
-        const div = document.createElement("div");
-        div.className = "row g-3 align-items-center mb-2 detalle border-bottom pb-2";
-        div.innerHTML = original.innerHTML;
-        document.getElementById("productos").appendChild(div);
+        const clone = original.cloneNode(true);
 
-        filtrarProductosPorProveedor();  // <-- IMPORTANTE para que respete el proveedor
+        // limpiar valores
+        clone.querySelector("select[name='IdProducto']").selectedIndex = 0;
+        clone.querySelector("input[name='Cantidad']").value = 1;
+        clone.querySelector("input[name='PrecioUnitario']").value = "";
+
+        document.getElementById("productos").appendChild(clone);
+
+        filtrarProductosPorProveedor();
     }
 
+    //  ELIMINAR FILA
+    function eliminarFila(btn) {
+        const filas = document.querySelectorAll(".detalle");
 
-    // 🎯 Filtra productos según proveedor seleccionado
+        if (filas.length > 1) {
+            btn.closest(".detalle").remove();
+            recalcularTotal();
+        } else {
+            // Si solo queda 1 fila, limpiar valores
+            const fila = filas[0];
+            fila.querySelector("select[name='IdProducto']").selectedIndex = 0;
+            fila.querySelector("input[name='Cantidad']").value = 1;
+            fila.querySelector("input[name='PrecioUnitario']").value = "";
+            recalcularTotal();
+        }
+    }
+
+    //  Filtrar productos por proveedor
     function filtrarProductosPorProveedor() {
         const idProveedor = document.getElementById("proveedorSelect").value;
-        const masterOptions = document.querySelectorAll("#productosMaster option");
+        const master = document.querySelectorAll("#productosMaster option");
 
         document.querySelectorAll(".producto-select").forEach(select => {
 
             const valorPrevio = select.value;
             select.innerHTML = "";
 
-            // Placeholder
-            const ph = document.createElement("option");
-            ph.value = "";
-            ph.textContent = "Seleccione un producto";
-            select.appendChild(ph);
+            const o = document.createElement("option");
+            o.value = "";
+            o.textContent = "Seleccione un producto";
+            select.appendChild(o);
 
-            masterOptions.forEach(opt => {
-                const provId = opt.getAttribute("data-proveedor");
-
-                // Si no hay proveedor → mostrar todos los productos
-                if (!idProveedor || provId === idProveedor) {
-                    select.appendChild(opt.cloneNode(true));
+            master.forEach(m => {
+                if (!idProveedor || m.getAttribute("data-proveedor") === idProveedor) {
+                    select.appendChild(m.cloneNode(true));
                 }
             });
 
-            // Intentar mantener selección previa
-            Array.from(select.options).forEach(o => {
-                if (o.value === valorPrevio) o.selected = true;
+            Array.from(select.options).forEach(op => {
+                if (op.value === valorPrevio) op.selected = true;
             });
         });
     }
 
-
-    // Precio automático
+    // Actualizar precio al elegir producto
     function actualizarPrecio(select) {
         const precio = select.selectedOptions[0]?.getAttribute("data-precio") || 0;
         const fila = select.closest(".detalle");
@@ -156,21 +180,24 @@
         recalcularTotal();
     }
 
-    // Recalcular total cada vez que cambia cantidad
+    // Recalcular total
+    function recalcularTotal() {
+        let total = 0;
+
+        document.querySelectorAll(".detalle").forEach(fila => {
+            const precio = parseFloat(fila.querySelector(".precio-input").value || 0);
+            const cantidad = parseInt(fila.querySelector(".cantidad-input").value || 0);
+            total += precio * cantidad;
+        });
+
+        document.getElementById("total").innerText = total.toFixed(2);
+    }
+
+    // Actualizar total cuando cambia la cantidad
     document.addEventListener("input", function (e) {
         if (e.target.classList.contains("cantidad-input")) {
             recalcularTotal();
         }
     });
 
-    // Total final
-    function recalcularTotal() {
-        let total = 0;
-        document.querySelectorAll(".detalle").forEach(fila => {
-            const precio = parseFloat(fila.querySelector(".precio-input").value || 0);
-            const cantidad = parseInt(fila.querySelector(".cantidad-input").value || 0);
-            total += precio * cantidad;
-        });
-        document.getElementById("total").innerText = total.toFixed(2);
-    }
 </script>
