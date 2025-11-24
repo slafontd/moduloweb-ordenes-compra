@@ -45,8 +45,8 @@ namespace ModuloWeb.MANAGER
             // 3. Generar Excel LEYENDO la orden desde BD
             string rutaExcel = GenerarExcel(idOrden);
 
-            // 4. Enviar correo al proveedor
-            EnviarCorreo(idOrden, rutaExcel);
+            // 4. Enviar correo al proveedor (CORREGIDO)
+            EnviarCorreo(idOrden, idProveedor, rutaExcel);
 
             return idOrden;
         }
@@ -163,7 +163,7 @@ namespace ModuloWeb.MANAGER
                 ws.Cell("B6").Value = total;
 
                 // DETALLES – fila inicial (ajústala a tu plantilla)
-                int fila = 10;   // por ejemplo, fila 10
+                int fila = 10;
 
                 foreach (var d in detalles)
                 {
@@ -193,11 +193,11 @@ namespace ModuloWeb.MANAGER
             {
                 Console.WriteLine("Proveedor sin correo, no se envía email.");
                 return;
-         }
+            }
 
             // 2. From y API key desde variables de entorno
             string fromEmail = Environment.GetEnvironmentVariable("FROM_EMAIL");
-            string apiKey    = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
+            string apiKey = Environment.GetEnvironmentVariable("SENDGRID_API_KEY");
 
             if (string.IsNullOrWhiteSpace(fromEmail))
             {
@@ -211,18 +211,18 @@ namespace ModuloWeb.MANAGER
                 return;
             }
 
-            var client = new SendGrid.SendGridClient(apiKey);
+            var client = new SendGridClient(apiKey);
 
-            var from = new SendGrid.Helpers.Mail.EmailAddress(fromEmail, "Sistema de Órdenes");
-            var to   = new SendGrid.Helpers.Mail.EmailAddress(correoDestino);
+            var from = new EmailAddress(fromEmail, "Sistema de Órdenes");
+            var to = new EmailAddress(correoDestino);
 
-            string subject   = $"Orden de Compra #{idOrden}";
+            string subject = $"Orden de Compra #{idOrden}";
             string plainText = "Adjunto la orden de compra generada automáticamente.";
 
-            var msg = SendGrid.Helpers.Mail.MailHelper.CreateSingleEmail(from, to, subject, plainText, null);
+            var msg = MailHelper.CreateSingleEmail(from, to, subject, plainText, null);
 
             // 3. Adjuntar el Excel
-            byte[] bytes  = File.ReadAllBytes(rutaExcel);
+            byte[] bytes = File.ReadAllBytes(rutaExcel);
             string base64 = Convert.ToBase64String(bytes);
 
             msg.AddAttachment(
@@ -238,6 +238,5 @@ namespace ModuloWeb.MANAGER
             var body = response.Body.ReadAsStringAsync().Result;
             Console.WriteLine($"SENDGRID BODY: {body}");
         }
-
     }
 }
