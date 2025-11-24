@@ -24,7 +24,7 @@ app.UseRouting();
 
 app.UseAuthorization();
 
-// Cambiar página inicial para que abra tu formulario de Orden de Compra
+// Cambiar página inicial para que abra formulario de Orden de Compra
 app.MapControllerRoute(
     name: "default",
     pattern: "{controller=OrdenCompra}/{action=Crear}/{id?}");

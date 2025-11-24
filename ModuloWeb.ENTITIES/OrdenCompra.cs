@@ -4,7 +4,7 @@ namespace ModuloWeb.ENTITIES
 {
     public class OrdenCompra
     {
-        public int IdOrden { get; set; }          // ← Esta propiedad es la que faltaba
+        public int IdOrden { get; set; }        
         public int IdProveedor { get; set; }
         public decimal Total { get; set; }
         public DateTime Fecha { get; set; }

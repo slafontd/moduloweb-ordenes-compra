@@ -14,9 +14,8 @@ namespace ModuloWeb.MANAGER
     {
         private readonly OrdenCompraBroker broker = new OrdenCompraBroker();
 
-        // =====================================================
-        // 0. Helper: conexión (Railway o local según el entorno)
-        // =====================================================
+        
+        // 0. Helper: conexión (Railway)
         private MySqlConnection CrearConexion()
         {
             var cs = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
@@ -28,9 +27,8 @@ namespace ModuloWeb.MANAGER
             return ConexionBD.Conectar();
         }
 
-        // =======================================
-        // 1. Crear ORDEN + DETALLES + EXCEL + MAIL
-        // =======================================
+    
+        // 1. Crear ORDEN + DETALLES + EXCEL + MAIL 
         public int CrearOrden(
             int idProveedor,
             decimal total,
@@ -52,20 +50,18 @@ namespace ModuloWeb.MANAGER
             return idOrden;
         }
 
-        // ===========================
+       
         // 2. Listar órdenes desde BD
-        // ===========================
         public List<OrdenCompra> ObtenerOrdenes()
         {
             return broker.ObtenerOrdenes();
         }
 
-        // ==========================================
-        // 3. Generar EXCEL a partir de lo guardado
-        // ==========================================
+        
+        // 3. Generar EXCEL a partir de lo guardado      
         private string GenerarExcel(int idOrden)
         {
-            // ----- 3.1. Leer encabezado + datos del proveedor -----
+            //3.1. Leer encabezado + datos del proveedor 
             string proveedorNombre = "";
             string proveedorNit = "";
             string proveedorDireccion = "";
@@ -112,7 +108,7 @@ namespace ModuloWeb.MANAGER
                 }
             }
 
-            // ----- 3.2. Leer detalles con nombre de producto -----
+            //3.2. Leer detalles con nombre de producto
             var detalles = new List<(int idProducto, string nombre, int cantidad, decimal precio, decimal subtotal)>();
 
             using (var con = CrearConexion())
@@ -146,7 +142,7 @@ namespace ModuloWeb.MANAGER
                 }
             }
 
-            // ----- 3.3. Preparar rutas -----
+            //  3.3. Preparar rutas 
             string carpeta = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Ordenes");
             Directory.CreateDirectory(carpeta);
 
@@ -160,22 +156,21 @@ namespace ModuloWeb.MANAGER
             if (!File.Exists(rutaPlantilla))
                 throw new Exception($"No se encuentra la plantilla PlantillaOrdenes.xlsx en {rutaPlantilla}.");
 
-            // ----- 3.4. Abrir plantilla y rellenar -----
+            //3.4. Abrir plantilla y rellenar
             using (var wb = new XLWorkbook(rutaPlantilla))
             {
                 var ws = wb.Worksheet(1);
 
                 // 3.4.1 ENCABEZADO IZQUIERDO (bloque “Proveedor”)
-                // Ajusta si en tu plantilla las celdas son otras
                 ws.Cell("B8").Value  = "Proveedor: " + proveedorNombre;
                 ws.Cell("B9").Value  = "NIT/CC: " + proveedorNit;
-                ws.Cell("B10").Value = "Ciudad:"; // si luego tienes ciudad separada, la pones aquí
+                ws.Cell("B10").Value = "Ciudad:"; 
                 ws.Cell("B11").Value = "Dirección: " + proveedorDireccion;
-                ws.Cell("B12").Value = "Contacto:"; // opcional
+                ws.Cell("B12").Value = "Contacto:"; 
                 ws.Cell("B13").Value = proveedorTelefono;
 
                 // 3.4.2 ENCABEZADO DERECHA (caja gris superior derecha)
-                // Estas son las que ves como:
+                // ejemplo plantilla:
                 //  J8:  "Facturar a:  SUPLINDUSTRIA S.A.S."
                 //  J9:  "Nit/CC:    901.130.635-2     "
                 //  J10: "Ciudad:      Medellin       Depto:    Antioquia"
@@ -184,37 +179,36 @@ namespace ModuloWeb.MANAGER
 
                 ws.Cell("J8").Value  = "Facturar a:  " + proveedorNombre;
                 ws.Cell("J9").Value  = "Nit/CC:    " + proveedorNit;
-                ws.Cell("J10").Value = "Ciudad: "; // aquí puedes concatenar ciudad si la guardas aparte
+                ws.Cell("J10").Value = "Ciudad: "; 
                 ws.Cell("J11").Value = "Direccion:  " + proveedorDireccion;
                 ws.Cell("J12").Value = "Telefonos:  " + proveedorTelefono;
 
                 // 3.4.3 OTROS CAMPOS (fecha, total, etc.)
                 // Fecha de la orden (celda donde se ve la fecha en tu plantilla)
-                ws.Cell("B15").Value = fecha;       // si en tu archivo se ve como número, solo dale formato fecha
+                ws.Cell("B15").Value = fecha;       
                 ws.Cell("C15").Value = "COP";       // Moneda fija
 
                 ws.Cell("B16").Value = "Condiciones de pago: 30 días"; // o lo que venga del formulario
                 // total (celda de “Total” en la parte baja)
-                // Ajusta la fila/columna si tu total va en otra parte:
                 ws.Cell("L27").Value = total;
 
                 // 3.4.4 DETALLES (líneas de productos)
-                int fila = 20;  // primera fila de la tabla de ítems (ajusta si en tu hoja es otra)
+                int fila = 20;  // primera fila de la tabla de ítems 
 
                 int linea = 1;
                 foreach (var d in detalles)
                 {
                     // Ln
                     ws.Cell(fila, 1).Value = linea;
-                    // Item (puedes usar el id de producto)
+                    // Item (se puede usar id de producto)
                     ws.Cell(fila, 2).Value = d.idProducto;
                     // Catalogo
-                    ws.Cell(fila, 3).Value = ""; // si no tienes catálogo, lo dejas vacío
+                    ws.Cell(fila, 3).Value = ""; // si no tienes catálogo queda vacio
                     // Modelo
                     ws.Cell(fila, 4).Value = ""; // idem
                     // Descripción
                     ws.Cell(fila, 5).Value = d.nombre;
-                    // F. Entrega, % IVA, UM, etc., los dejas como en la plantilla o los llenas si tienes datos
+                    // F. Entrega, % IVA, UM
                     // Cantidad
                     ws.Cell(fila, 8).Value = d.cantidad;
                     // Precio Unit.
@@ -232,9 +226,9 @@ namespace ModuloWeb.MANAGER
             return rutaSalida;
         }
 
-        // =====================================
+        
         // 4. Enviar correo con SendGrid (API)
-        // =====================================
+        
         private void EnviarCorreo(int idOrden, int idProveedor, string rutaExcel)
         {
             // 1. Correo del proveedor

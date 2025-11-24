@@ -7,9 +7,7 @@ namespace ModuloWeb.BROKER
 {
     public class OrdenCompraBroker
     {
-        // ==========================
         //  Helper: crear conexión
-        // ==========================
         private MySqlConnection CrearConexion()
         {
             var cs = Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection");
@@ -21,9 +19,7 @@ namespace ModuloWeb.BROKER
             return ConexionBD.Conectar();
         }
 
-        // ==========================
         // Insertar ENCABEZADO orden
-        // ==========================
         public int InsertarOrden(int idProveedor, decimal total)
         {
             using (var con = CrearConexion())
@@ -43,9 +39,7 @@ namespace ModuloWeb.BROKER
             }
         }
 
-        // ==========================
         // Insertar DETALLE orden
-        // ==========================
         public void InsertarDetalle(int idOrden, int idProducto, int cantidad, decimal precio)
         {
             using (var con = CrearConexion())
@@ -70,9 +64,7 @@ namespace ModuloWeb.BROKER
             }
         }
 
-        // ==========================
         // Listar proveedores
-        // ==========================
         public List<Proveedor> ObtenerProveedores()
         {
             var lista = new List<Proveedor>();
@@ -105,9 +97,7 @@ namespace ModuloWeb.BROKER
             return lista;
         }
 
-        // ==========================
         // Obtener UN proveedor
-        // ==========================
         public Proveedor? ObtenerProveedorPorId(int idProveedor)
         {
             using (var con = CrearConexion())
@@ -140,9 +130,8 @@ namespace ModuloWeb.BROKER
             }
         }
 
-        // ==========================
+        
         // Listar productos
-        // ==========================
         public List<Producto> ObtenerProductos()
         {
             var lista = new List<Producto>();
@@ -173,9 +162,8 @@ namespace ModuloWeb.BROKER
             return lista;
         }
 
-        // ==========================
+
         // Obtener UN producto
-        // ==========================
         public Producto? ObtenerProductoPorId(int idProducto)
         {
             using (var con = CrearConexion())
@@ -206,9 +194,8 @@ namespace ModuloWeb.BROKER
             }
         }
 
-        // ==========================
+       
         // Precio de producto
-        // ==========================
         public decimal ObtenerPrecioProducto(int idProducto)
         {
             using (var con = CrearConexion())
@@ -231,9 +218,8 @@ namespace ModuloWeb.BROKER
             }
         }
 
-        // ==========================
+        
         // Correo de proveedor (para enviar)
-        // ==========================
         public string? ObtenerCorreoProveedor(int idProveedor)
         {
             using (var con = CrearConexion())
@@ -252,9 +238,8 @@ namespace ModuloWeb.BROKER
         }
 
 
-        // --------------------------------------------------------------
+        
         // LISTAR TODAS LAS ÓRDENES (para trazabilidad)
-        // --------------------------------------------------------------
         public List<OrdenCompra> ObtenerOrdenes()
         {
             var lista = new List<OrdenCompra>();
