@@ -11,7 +11,7 @@ namespace ModuloWeb1.Controllers
     public class OrdenCompraController : Controller
     {
         OrdenCompraManager manager = new OrdenCompraManager();
-        OrdenCompraBroker broker = new OrdenCompraBroker(); // ✅ Aquí agregas esta línea
+        OrdenCompraBroker broker = new OrdenCompraBroker(); // Aquí agregas esta línea
 
         // Muestra el formulario
         public IActionResult Crear()
@@ -49,8 +49,7 @@ namespace ModuloWeb1.Controllers
         // Lista de órdenes
         public IActionResult Lista()
         {
-            var manager = new OrdenCompraManager();
-            var ordenes = new List<OrdenCompra>();
+            var ordenes = manager.ObtenerOrdenes();
             return View(ordenes);
         }
     }

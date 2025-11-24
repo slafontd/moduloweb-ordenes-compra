@@ -250,5 +250,42 @@ namespace ModuloWeb.BROKER
                 return cmd.ExecuteScalar()?.ToString();
             }
         }
+
+
+        // --------------------------------------------------------------
+        // LISTAR TODAS LAS ÓRDENES (para trazabilidad)
+        // --------------------------------------------------------------
+        public List<OrdenCompra> ObtenerOrdenes()
+        {
+            var lista = new List<OrdenCompra>();
+
+            using (var con = CrearConexion())
+            {
+                con.Open();
+
+                var cmd = new MySqlCommand(
+                    "SELECT id_orden, id_proveedor, total, fecha, estado " +
+                    "FROM ordenes_compra ORDER BY fecha DESC",
+                    con
+                );
+
+                using (var reader = cmd.ExecuteReader())
+                {
+                    while (reader.Read())
+                    {
+                        lista.Add(new OrdenCompra
+                        {
+                            IdOrden     = reader.GetInt32("id_orden"),
+                            IdProveedor = reader.GetInt32("id_proveedor"),
+                            Total       = reader.GetDecimal("total"),
+                            Fecha       = reader.GetDateTime("fecha"),
+                            Estado      = reader.GetString("estado")
+                        });
+                    }
+                }
+            }
+
+            return lista;
+        }
     }
 }
