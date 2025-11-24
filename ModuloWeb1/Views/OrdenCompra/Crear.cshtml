@@ -15,7 +15,8 @@
             <div class="row mb-3">
                 <div class="col-md-6">
                     <label class="form-label fw-bold">Proveedor:</label>
-                    <select id="proveedorSelect" name="IdProveedor" class="form-select" onchange="filtrarProductosPorProveedor()" required>
+                    <select id="proveedorSelect" name="IdProveedor" class="form-select"
+                            onchange="filtrarProductosPorProveedor()" required>
                         <option value="">Seleccione un proveedor</option>
                         @foreach (var p in ViewBag.Proveedores)
                         {
@@ -33,15 +34,39 @@
             <hr />
             <h4 class="text-secondary">🛒 Productos</h4>
 
+            <div class="mb-2 text-muted">
+                <small>
+                    Puedes escoger un producto del catálogo <strong>o</strong> escribirlo manualmente con su valor.
+                </small>
+            </div>
+
             <!-- CONTENEDOR DE FILAS -->
             <div id="productos" class="mb-3">
 
                 <!-- FILA MODELO -->
                 <div class="row g-3 align-items-center mb-2 detalle border-bottom pb-2">
-                    
-                    <div class="col-md-4">
-                        <label class="form-label">Producto</label>
-                        <select name="IdProducto" class="form-select producto-select" onchange="actualizarPrecio(this)" required>
+
+                    <!-- Modo producto (catálogo / manual) -->
+                    <div class="col-12 mb-2">
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input modo-catalogo" type="radio"
+                                   name="modo_0" value="catalogo" checked
+                                   onclick="cambiarModo(this)">
+                            <label class="form-check-label">Catálogo</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input modo-manual" type="radio"
+                                   name="modo_0" value="manual"
+                                   onclick="cambiarModo(this)">
+                            <label class="form-check-label">Manual</label>
+                        </div>
+                    </div>
+
+                    <!-- Producto de catálogo -->
+                    <div class="col-md-4 cont-catalogo">
+                        <label class="form-label">Producto (catálogo)</label>
+                        <select name="IdProducto" class="form-select producto-select"
+                                onchange="actualizarPrecio(this)" required>
                             <option value="">Seleccione un producto</option>
                             @foreach (var pr in ViewBag.Productos)
                             {
@@ -54,17 +79,29 @@
                         </select>
                     </div>
 
-                    <div class="col-md-3">
+                    <!-- Producto manual -->
+                    <div class="col-md-4 cont-manual d-none">
+                        <label class="form-label">Producto (manual)</label>
+                        <input type="text" name="NombreManual" class="form-control"
+                               placeholder="Descripción del producto" />
+                    </div>
+
+                    <div class="col-md-2">
                         <label class="form-label">Cantidad</label>
-                        <input type="number" name="Cantidad" class="form-control cantidad-input" min="1" value="1" required />
+                        <input type="number" name="Cantidad"
+                               class="form-control cantidad-input"
+                               min="1" value="1" required />
                     </div>
 
                     <div class="col-md-3">
                         <label class="form-label">Precio Unitario</label>
-                        <input type="text" name="PrecioUnitario" class="form-control precio-input" readonly />
+                        <input type="number" step="0.01"
+                               name="PrecioUnitario"
+                               class="form-control precio-input"
+                               readonly />
                     </div>
 
-                    <div class="col-md-2 text-center">
+                    <div class="col-md-1 text-center">
                         <label class="form-label d-block">&nbsp;</label>
                         <button type="button" class="btn btn-danger" onclick="eliminarFila(this)">
                             ❌
@@ -85,7 +122,7 @@
             </div>
 
             <div class="text-center">
-                <button type="submit" class="btn btn-success px-4">💾 Generar Orden</button>
+                <button type="submit" class="btn btn_SUCCESS px-4">💾 Generar Orden</button>
             </div>
         </form>
 
@@ -98,12 +135,12 @@
     </div>
 </div>
 
-<!-- SELECT OCULTO PARA FILTRO DE PRODUCTOS -->
+<!-- SELECT OCULTO CON TODOS LOS PRODUCTOS -->
 <select id="productosMaster" class="d-none">
     <option value="">Seleccione un producto</option>
     @foreach (var pr in ViewBag.Productos)
     {
-        <option value="@pr.Id" 
+        <option value="@pr.Id"
                 data-precio="@pr.Precio"
                 data-proveedor="@pr.IdProveedor">
             @pr.Nombre
@@ -112,46 +149,96 @@
 </select>
 
 <script>
-
-    // DUPLICAR FILA
+    // Clonar fila
     function agregarFila() {
         const original = document.querySelector(".detalle");
         const clone = original.cloneNode(true);
 
-        // limpiar valores
+        // limpiar campos
         clone.querySelector("select[name='IdProducto']").selectedIndex = 0;
+        clone.querySelector("input[name='NombreManual']").value = "";
         clone.querySelector("input[name='Cantidad']").value = 1;
         clone.querySelector("input[name='PrecioUnitario']").value = "";
+
+        // reset modos
+        const radios = clone.querySelectorAll(".form-check-input");
+        radios.forEach(r => {
+            r.name = "modo_" + document.querySelectorAll(".detalle").length; // nombre único por fila
+            if (r.value === "catalogo") r.checked = true;
+            else r.checked = false;
+        });
+
+        // mostrar catálogo / ocultar manual
+        clone.querySelector(".cont-catalogo").classList.remove("d-none");
+        clone.querySelector(".cont-manual").classList.add("d-none");
+        clone.querySelector("select[name='IdProducto']").required = true;
+        clone.querySelector("input[name='NombreManual']").required = false;
+        clone.querySelector("input[name='PrecioUnitario']").readOnly = true;
 
         document.getElementById("productos").appendChild(clone);
 
         filtrarProductosPorProveedor();
     }
 
-    //  ELIMINAR FILA
+    // Eliminar fila
     function eliminarFila(btn) {
         const filas = document.querySelectorAll(".detalle");
 
         if (filas.length > 1) {
             btn.closest(".detalle").remove();
-            recalcularTotal();
         } else {
-            // Si solo queda 1 fila, limpiar valores
             const fila = filas[0];
             fila.querySelector("select[name='IdProducto']").selectedIndex = 0;
+            fila.querySelector("input[name='NombreManual']").value = "";
             fila.querySelector("input[name='Cantidad']").value = 1;
             fila.querySelector("input[name='PrecioUnitario']").value = "";
-            recalcularTotal();
         }
+
+        recalcularTotal();
     }
 
-    //  Filtrar productos por proveedor
+    // Cambiar entre catálogo / manual
+    function cambiarModo(radio) {
+        const fila = radio.closest(".detalle");
+        const modo = radio.value;
+
+        const contCatalogo = fila.querySelector(".cont-catalogo");
+        const contManual = fila.querySelector(".cont-manual");
+        const selectProd = fila.querySelector("select[name='IdProducto']");
+        const inputNombre = fila.querySelector("input[name='NombreManual']");
+        const inputPrecio = fila.querySelector("input[name='PrecioUnitario']");
+
+        if (modo === "catalogo") {
+            contCatalogo.classList.remove("d-none");
+            contManual.classList.add("d-none");
+
+            selectProd.required = true;
+            inputNombre.required = false;
+
+            // el precio se calcula desde el catálogo
+            inputPrecio.readOnly = true;
+            actualizarPrecio(selectProd);
+        } else {
+            contCatalogo.classList.add("d-none");
+            contManual.classList.remove("d-none");
+
+            selectProd.required = false;
+            inputNombre.required = true;
+
+            // en modo manual, el precio se escribe
+            inputPrecio.readOnly = false;
+            inputPrecio.value = "";
+        }
+
+        recalcularTotal();
+    }
+
+    // Filtrar productos por proveedor
     function filtrarProductosPorProveedor() {
         const idProveedor = document.getElementById("proveedorSelect").value;
         const master = document.querySelectorAll("#productosMaster option");
 
         document.querySelectorAll(".producto-select").forEach(select => {
-
             const valorPrevio = select.value;
             select.innerHTML = "";
 
@@ -172,12 +259,18 @@
         });
     }
 
-    // Actualizar precio al elegir producto
+    // Precio desde catálogo
     function actualizarPrecio(select) {
-        const precio = select.selectedOptions[0]?.getAttribute("data-precio") || 0;
         const fila = select.closest(".detalle");
-        fila.querySelector(".precio-input").value = precio;
-        recalcularTotal();
+        const precio = select.selectedOptions[0]?.getAttribute("data-precio") || 0;
+        const inputPrecio = fila.querySelector(".precio-input");
+
+        // solo en modo catálogo
+        const radioCatalogo = fila.querySelector(".modo-catalogo");
+        if (radioCatalogo.checked) {
+            inputPrecio.value = precio;
+            recalcularTotal();
+        }
     }
 
     // Recalcular total
@@ -193,11 +286,17 @@
         document.getElementById("total").innerText = total.toFixed(2);
     }
 
-    // Actualizar total cuando cambia la cantidad
+    // Actualizar total al cambiar cantidad o precio manual
     document.addEventListener("input", function (e) {
-        if (e.target.classList.contains("cantidad-input")) {
+        if (e.target.classList.contains("cantidad-input") ||
+            (e.target.name === "PrecioUnitario")) {
             recalcularTotal();
         }
     });
 
+    // Inicial: filtra productos y recalcula
+    document.addEventListener("DOMContentLoaded", function () {
+        filtrarProductosPorProveedor();
+        recalcularTotal();
+    });
 </script>
