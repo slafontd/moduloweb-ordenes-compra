@@ -10,4 +10,10 @@
     <ProjectReference Include="..\ModuloWeb.MANAGER\ModuloWeb.MANAGER.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Plantillas\PlantillaOrdenes.xlsx">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
 </Project>
