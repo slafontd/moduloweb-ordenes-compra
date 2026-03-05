@@ -1,12 +1,12 @@
 {
   "version": 2,
-  "dgSpecHash": "JgO5XWPaoLo=",
+  "dgSpecHash": "1ZT2cv5Fij4=",
   "success": true,
-  "projectFilePath": "C:\\Users\\lafon\\OneDrive\\Escritorio\\ModuloWebApp\\ModuloWeb.ENTITIES\\ModuloWeb.ENTITIES.csproj",
+  "projectFilePath": "C:\\Users\\Asus\\Desktop\\milo\\moduloweb-ordenes-compra\\ModuloWeb.ENTITIES\\ModuloWeb.ENTITIES.csproj",
   "expectedPackageFiles": [
-    "C:\\Users\\lafon\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.20\\microsoft.netcore.app.ref.8.0.20.nupkg.sha512",
-    "C:\\Users\\lafon\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.20\\microsoft.windowsdesktop.app.ref.8.0.20.nupkg.sha512",
-    "C:\\Users\\lafon\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.20\\microsoft.aspnetcore.app.ref.8.0.20.nupkg.sha512"
+    "C:\\Users\\Asus\\.nuget\\packages\\microsoft.netcore.app.ref\\8.0.22\\microsoft.netcore.app.ref.8.0.22.nupkg.sha512",
+    "C:\\Users\\Asus\\.nuget\\packages\\microsoft.windowsdesktop.app.ref\\8.0.22\\microsoft.windowsdesktop.app.ref.8.0.22.nupkg.sha512",
+    "C:\\Users\\Asus\\.nuget\\packages\\microsoft.aspnetcore.app.ref\\8.0.22\\microsoft.aspnetcore.app.ref.8.0.22.nupkg.sha512"
   ],
   "logs": []
 }

@@ -6,7 +6,7 @@ namespace ModuloWeb.BROKER
     public class ConexionBD
     {
         private static string cadena =
-            "Server=localhost;Database=moduloweb;Uid=root;Pwd=3816Sa810&;";
+            "Server=localhost;Database=moduloweb;Uid=root;Pwd=;";
 
         public static MySqlConnection Conectar()
         {
